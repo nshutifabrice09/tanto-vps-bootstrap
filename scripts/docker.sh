@@ -22,3 +22,11 @@ if [[ $EUID -ne 0 ]]; then
     error "This script must be run as root."
     exit 1
 fi
+
+remove_old_packages() {
+    info "Removing conflicting Docker packages..."
+
+    for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do
+        apt-get remove -y "$pkg" >/dev/null 2>&1 || true
+    done
+}
