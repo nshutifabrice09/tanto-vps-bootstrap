@@ -17,3 +17,8 @@ error() {
 }
 
 info "Starting Docker installation..."
+
+if [[ $EUID -ne 0 ]]; then
+    error "This script must be run as root."
+    exit 1
+fi
