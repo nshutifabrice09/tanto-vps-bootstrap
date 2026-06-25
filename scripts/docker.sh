@@ -43,4 +43,11 @@ install_prerequisites() {
         lsb-release
 }
 
+main() {
+    remove_old_packages
+    install_prerequisites
 
+    info "Docker prerequisites installed."
+}
+
+main "$@"
