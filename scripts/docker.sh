@@ -30,3 +30,17 @@ remove_old_packages() {
         apt-get remove -y "$pkg" >/dev/null 2>&1 || true
     done
 }
+
+install_prerequisites() {
+    info "Installing Docker prerequisites..."
+
+    apt-get update
+
+    apt-get install -y \
+        ca-certificates \
+        curl \
+        gnupg \
+        lsb-release
+}
+
+
