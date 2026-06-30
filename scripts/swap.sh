@@ -130,6 +130,27 @@ EOF
     info "Kernel parameters configured."
 }
 
+verify_swap_configuration() {
+
+    info "Verifying swap configuration..."
+
+    echo
+    echo "========== Memory =========="
+    free -h
+
+    echo
+    echo "========== Active Swap =========="
+    swapon --show
+
+    echo
+    echo "========== Kernel Parameters =========="
+    sysctl vm.swappiness
+    sysctl vm.vfs_cache_pressure
+
+    info "Swap configuration verified successfully."
+}
+
+
 ########
 # Main
 ########
@@ -144,7 +165,8 @@ main() {
     create_Swap_file
     persist_swap
     configure_kernel_parameters
-    info "Swap configuration initialized."
+    verify_swap_configuration 
+   info "Swap configuration initialized."
 }
 
 main "$@"
