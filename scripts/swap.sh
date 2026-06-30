@@ -99,10 +99,6 @@ create_swap_file() {
 }
 
 
-########
-# Main
-########
-
 persist_swap() {
 
     info "Persisting swap configuration..."
@@ -120,6 +116,24 @@ persist_swap() {
     info "Swap added to /etc/fstab."
 }
 
+configure_kernel_parameters() {
+
+    info "Configuring kernel memory parameters..."
+
+    cat >/etc/sysctl.d/99-gc-vps-bootstrap.conf <<EOF
+vm.swappiness=10
+vm.vfs_cache_pressure=50
+EOF
+
+    sysctl --system >/dev/null
+
+    info "Kernel parameters configured."
+}
+
+########
+# Main
+########
+
 main() {
 
     info "Starting swap configuration..."
@@ -129,6 +143,7 @@ main() {
     determine_swa_size
     create_Swap_file
     persist_swap
+    configure_kernel_parameters
     info "Swap configuration initialized."
 }
 
