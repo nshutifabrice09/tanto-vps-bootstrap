@@ -74,7 +74,8 @@ main() {
     install_docker
     configure_docker_user
     configure_docker_daemon
- 
+    verify_docker_installation
+
     info "Docker repository configured."
 }
 
@@ -131,7 +132,17 @@ EOF
     info "Docker daemon configured."
 }
 
+verify_docker_installation() {
+    info "Verifying Docker installation..."
 
+    docker --version
+    docker compose version
+    docker buildx version
+
+    docker run --rm Well Installed
+
+    info "Docker verification completed successfully."
+}
 
 main "$@"
 
