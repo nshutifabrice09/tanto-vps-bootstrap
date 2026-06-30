@@ -71,7 +71,10 @@ main() {
     install_prerequisites
     install_docker_gpg_key
     add_docker_repository
-
+    install_docker
+    configure_docker_user
+    configure_docker_daemon
+ 
     info "Docker repository configured."
 }
 
@@ -103,6 +106,32 @@ configure_docker_user() {
         warn "Unable to determine the invoking user. Skipping docker group configuration."
     fi
 }
+
+configure_docker_daemon() {
+    info "Configuring Docker daemon..."
+
+    mkdir -p /etc/docker
+
+    cat > /etc/docker/daemon.json <<EOF
+{
+    "log-driver": "json-file",
+    "log-opts": {
+        "max-size": "10m",
+        "max-file": "5"
+    },
+    "live-restore": true,
+    "features": {
+        "buildkit": true
+    }
+}
+EOF
+
+    systemctl restart docker
+
+    info "Docker daemon configured."
+}
+
+
 
 main "$@"
 
