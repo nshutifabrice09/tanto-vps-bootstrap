@@ -46,6 +46,12 @@ install_prerequisites() {
 main() {
     remove_old_packages
     install_prerequisites
+    install_docker_gpg_key
+    add_docker_repository
+    install_docker
+    configure_docker_user
+    configure_docker_daemon
+    verify_docker_installation
 
     info "Docker prerequisites installed."
 }
@@ -64,19 +70,6 @@ add_docker_repository() {
 
     info "Docker repository added successfully."
 
-}
-
-main() {
-    remove_old_packages
-    install_prerequisites
-    install_docker_gpg_key
-    add_docker_repository
-    install_docker
-    configure_docker_user
-    configure_docker_daemon
-    verify_docker_installation
-
-    info "Docker repository configured."
 }
 
 install_docker() {
