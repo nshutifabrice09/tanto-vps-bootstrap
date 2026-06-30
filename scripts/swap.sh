@@ -103,6 +103,23 @@ create_swap_file() {
 # Main
 ########
 
+persist_swap() {
+
+    info "Persisting swap configuration..."
+
+    if grep -q "^/swapfile" /etc/fstab; then
+
+        info "/swapfile already exists in /etc/fstab."
+
+        return
+
+    fi
+
+    echo "/swapfile none swap sw 0 0" >> /etc/fstab
+
+    info "Swap added to /etc/fstab."
+}
+
 main() {
 
     info "Starting swap configuration..."
@@ -111,7 +128,7 @@ main() {
     chech_existing_swap
     determine_swa_size
     create_Swap_file
-
+    persist_swap
     info "Swap configuration initialized."
 }
 
