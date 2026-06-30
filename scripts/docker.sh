@@ -91,4 +91,18 @@ install_docker() {
     info "Docker Engine installed successfully."
 }
 
+configure_docker_user() {
+    info "Configuring Docker user..."
+
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        usermod -aG docker "$SUDO_USER"
+
+        info "Added '$SUDO_USER' to the docker group."
+        warn "The user must log out and log back in for group changes to take effect."
+    else
+        warn "Unable to determine the invoking user. Skipping docker group configuration."
+    fi
+}
+
 main "$@"
+
