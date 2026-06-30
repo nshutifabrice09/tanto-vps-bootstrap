@@ -75,4 +75,20 @@ main() {
     info "Docker repository configured."
 }
 
+install_docker() {
+    info "Installing Docker Engine..."
+
+    apt-get install -y \
+        docker-ce \
+        docker-ce-cli \
+        containerd.io \
+        docker-buildx-plugin \
+        docker-compose-plugin
+
+    systemctl enable docker
+    systemctl start docker
+
+    info "Docker Engine installed successfully."
+}
+
 main "$@"
