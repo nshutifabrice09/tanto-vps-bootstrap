@@ -50,4 +50,29 @@ main() {
     info "Docker prerequisites installed."
 }
 
+add_docker_repository() {
+    info "Adding Docker APT repository..."
+
+    ARCH=$(dpkg --print-architecture)
+    CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
+
+    echo \
+        "deb [arch=${ARCH} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${CODENAME} stable" \
+        | tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+    apt-get update
+
+    info "Docker repository added successfully."
+
+}
+
+main() {
+    remove_old_packages
+    install_prerequisites
+    install_docker_gpg_key
+    add_docker_repository
+
+    info "Docker repository configured."
+}
+
 main "$@"
