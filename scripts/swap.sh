@@ -67,6 +67,21 @@ determine_swap_size() {
     info "Recommended swap size: ${SWAP_SIZE}"
 }
 
+create_swap_file() {
+
+    info "Creating ${SWAP_SIZE} swap file..."
+
+    fallocate -l "${SWAP_SIZE}" /swapfile
+
+    chmod 600 /swapfile
+
+    mkswap /swapfile
+
+    swapon /swapfile
+
+    info "Swap file created and enabled."
+}
+
 
 ########
 # Main
@@ -79,6 +94,8 @@ main() {
     require_root
     chech_existing_swap
     determine_swa_size
+    create_Swap_file
+
     info "Swap configuration initialized."
 }
 
