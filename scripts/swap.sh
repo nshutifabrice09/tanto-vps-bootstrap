@@ -44,6 +44,30 @@ check_existing_swap() {
     info "No existing swap detected."
 }
 
+determine_swap_size() {
+
+    local total_ram_mb
+
+    total_ram_mb=$(free -m | awk '/^Mem:/ {print $2}')
+
+    if (( total_ram_mb <= 2048 )); then
+        SWAP_SIZE="2G"
+
+    elif (( total_ram_mb <= 4096 )); then
+        SWAP_SIZE="4G"
+
+    elif (( total_ram_mb <= 8192 )); then
+        SWAP_SIZE="4G"
+
+    else
+        SWAP_SIZE="8G"
+    fi
+
+    info "Detected RAM: ${total_ram_mb} MB"
+    info "Recommended swap size: ${SWAP_SIZE}"
+}
+
+
 ########
 # Main
 ########
@@ -54,7 +78,7 @@ main() {
 
     require_root
     chech_existing_swap
-
+    determine_swa_size
     info "Swap configuration initialized."
 }
 
