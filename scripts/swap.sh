@@ -46,6 +46,15 @@ check_existing_swap() {
 
 determine_swap_size() {
 
+    # Allow the user to specify a custom swap size.
+    if [[ $# -ge 1 ]]; then
+        SWAP_SIZE="$1"
+
+        info "Using user-defined swap size: ${SWAP_SIZE}"
+
+        return
+    fi
+
     local total_ram_mb
 
     total_ram_mb=$(free -m | awk '/^Mem:/ {print $2}')
@@ -64,7 +73,7 @@ determine_swap_size() {
     fi
 
     info "Detected RAM: ${total_ram_mb} MB"
-    info "Recommended swap size: ${SWAP_SIZE}"
+    info "Automatically selected swap size: ${SWAP_SIZE}"
 }
 
 create_swap_file() {
@@ -160,12 +169,13 @@ main() {
     info "Starting swap configuration..."
 
     require_root
-    chech_existing_swap
-    determine_swa_size
+    check_existing_swap
+    determine_swap_size
     create_Swap_file
     persist_swap
     configure_kernel_parameters
-    verify_swap_configuration 
+    verify_swap_configuration
+
    info "Swap configuration initialized."
 }
 
