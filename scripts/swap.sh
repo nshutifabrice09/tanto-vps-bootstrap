@@ -29,6 +29,21 @@ require_root() {
     fi
 }
 
+check_existing_swap() {
+
+    if swapon --show | grep -q "/"; then
+
+        info "Swap is already configured."
+
+        swapon --show
+
+        exit 0
+
+    fi
+
+    info "No existing swap detected."
+}
+
 ########
 # Main
 ########
@@ -38,6 +53,7 @@ main() {
     info "Starting swap configuration..."
 
     require_root
+    chech_existing_swap
 
     info "Swap configuration initialized."
 }
