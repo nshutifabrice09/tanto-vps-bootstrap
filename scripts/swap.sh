@@ -69,6 +69,22 @@ determine_swap_size() {
 
 create_swap_file() {
 
+    if [[ -f /swapfile ]]; then
+
+        warn "/swapfile already exists."
+
+        if ! swapon --show | grep -q "/swapfile"; then
+
+            info "Activating existing swap file..."
+
+            swapon /swapfile
+
+        fi
+
+        return
+
+    fi
+
     info "Creating ${SWAP_SIZE} swap file..."
 
     fallocate -l "${SWAP_SIZE}" /swapfile
