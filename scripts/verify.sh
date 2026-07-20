@@ -223,6 +223,7 @@ verify_network() {
 # Failed Services
 ##################
 
+
 verify_failed_services() {
 
     echo
@@ -230,7 +231,18 @@ verify_failed_services() {
     echo "FAILED SYSTEMD UNITS"
     echo "=============================="
 
+    local failed
+
+    failed=$(systemctl --failed --no-legend | wc -l)
+
+    if (( failed > 0 )); then
+
+        add_warning "${failed} failed systemd unit(s) detected"
+
+    fi
+
     systemctl --failed --no-pager
+
 }
 
 ################
@@ -245,6 +257,51 @@ verify_logs() {
     echo "=============================="
 
     journalctl -p err -n 20 --no-pager
+
+}
+
+#################
+# Health Summary
+#################
+
+health_summary() {
+
+    echo
+    echo "======================================="
+    echo "Health Summary"
+    echo "======================================="
+
+    if ((${#CRITICALS[@]})); then
+
+        echo
+        echo "Critical Issues:"
+
+        printf '  - %s\n' "${CRITICALS[@]}"
+
+    fi
+
+    if ((${#WARNINGS[@]})); then
+
+        echo
+        echo "Warnings:"
+
+        printf '  - %s\n' "${WARNINGS[@]}"
+
+    fi
+
+    echo
+
+    case "$EXIT_CODE" in
+        0)
+            echo "Overall Status : HEALTHY"
+            ;;
+        1)
+            echo "Overall Status : HEALTHY WITH WARNINGS"
+            ;;
+        2)
+            echo "Overall Status : CRITICAL"
+            ;;
+    esac
 }
 
 #######
@@ -273,7 +330,12 @@ main() {
 
     verify_logs
 
+    health_summary
+
     info "Verification completed."
+
+    exit "$EXIT_CODE"
+
 }
 
 main "$@"
