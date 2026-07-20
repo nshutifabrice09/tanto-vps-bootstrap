@@ -1,4 +1,4 @@
-#!/sur/bin/env bash
+#!/usr/bin/env bash
 
 set -Eeuo pipefail
 
@@ -168,4 +168,130 @@ run_full_installation() {
 
 }
 
+#######
+# MAIN
+#######
 
+main() {
+
+    show_banner
+
+
+    if [[ $# -eq 0 ]]; then
+
+        warn "No option provided."
+
+        show_help
+
+        exit 1
+
+    fi
+
+
+    case "$1" in
+
+
+        --help)
+
+            show_help
+
+            exit 0
+            ;;
+
+
+        --version)
+
+            echo "${VERSION}"
+
+            exit 0
+            ;;
+
+
+    esac
+
+
+    require_root
+
+
+    case "$1" in
+
+
+        --full)
+
+            run_full_installation
+            ;;
+
+
+        --system)
+
+            run_module system
+            ;;
+
+
+        --security)
+
+            run_module security
+            ;;
+
+
+        --swap)
+
+            run_module swap
+            ;;
+
+
+        --docker)
+
+            run_module docker
+            ;;
+
+
+        --nginx)
+
+            run_module nginx
+            ;;
+
+
+        --tailscale)
+
+            run_module tailscale
+            ;;
+
+
+        --backup)
+
+            run_module backup
+            ;;
+
+
+        --verify)
+
+            run_module verify
+            ;;
+
+
+        --cleanup)
+
+            run_module cleanup
+            ;;
+
+
+        *)
+
+            error "Unknown option: $1"
+
+            show_help
+
+            exit 1
+            ;;
+
+
+    esac
+
+}
+
+##########
+# EXECUTE
+##########
+
+main "$@"
