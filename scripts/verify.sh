@@ -2,9 +2,38 @@
 
 set -Eeuo pipefail
 
-################################################################################
+################
+# Health Status
+################
+
+EXIT_CODE=0
+
+WARNINGS=()
+
+CRITICALS=()
+
+#################
+# Health Helpers
+#################
+
+add_warning() {
+
+    WARNINGS+=("$1")
+
+    [[ $EXIT_CODE -lt 1 ]] && EXIT_CODE=1
+}
+
+add_critical() {
+
+    CRITICALS+=("$1")
+
+    EXIT_CODE=2
+}
+
+
+##########
 # Logging
-################################################################################
+##########
 
 info() {
     echo -e "\e[32m[INFO]\e[0m $1"
@@ -14,24 +43,35 @@ warn() {
     echo -e "\e[33m[WARN]\e[0m $1"
 }
 
-################################################################################
+##########
 # Helpers
-################################################################################
+##########
 
 check_service() {
 
     local service="$1"
+    local required="${2:-true}"
 
     if systemctl is-active --quiet "$service"; then
+
         printf "  %-20s : ✅ Running\n" "$service"
+
     else
+
         printf "  %-20s : ❌ Not running\n" "$service"
+
+        if [[ "$required" == "true" ]]; then
+            add_critical "$service service is not running"
+        else
+            add_warning "$service service is not running"
+        fi
+
     fi
 }
 
-################################################################################
+#####################
 # System Information
-################################################################################
+#####################
 
 system_information() {
 
@@ -55,9 +95,9 @@ system_information() {
     swapon --show || true
 }
 
-################################################################################
+###########
 # Services
-################################################################################
+###########
 
 verify_services() {
 
@@ -81,9 +121,54 @@ verify_services() {
     fi
 }
 
-################################################################################
+#############
+# Disk Usage
+#############
+
+check_disk_usage() {
+
+    local usage
+
+    usage=$(df / | awk 'NR==2 {gsub("%",""); print $5}')
+
+    if (( usage >= 90 )); then
+
+        add_critical "Disk usage is ${usage}%"
+
+    elif (( usage >= 80 )); then
+
+        add_warning "Disk usage is ${usage}%"
+
+    fi
+
+}
+
+###############
+# Memory Check
+###############
+
+check_memory() {
+
+    local available
+
+    available=$(free | awk '/Mem:/ {print int($7/$2*100)}')
+
+    if (( available < 10 )); then
+
+        add_critical "Available memory below 10%"
+
+    elif (( available < 20 )); then
+
+        add_warning "Available memory below 20%"
+
+    fi
+
+}
+
+
+###########
 # Firewall
-################################################################################
+###########
 
 verify_firewall() {
 
@@ -99,9 +184,9 @@ verify_firewall() {
     fi
 }
 
-################################################################################
+#########
 # Docker
-################################################################################
+#########
 
 verify_docker() {
 
@@ -120,9 +205,9 @@ verify_docker() {
     docker system df
 }
 
-################################################################################
+##########
 # Network
-################################################################################
+##########
 
 verify_network() {
 
@@ -134,9 +219,9 @@ verify_network() {
     ss -tulpn
 }
 
-################################################################################
+##################
 # Failed Services
-################################################################################
+##################
 
 verify_failed_services() {
 
@@ -148,9 +233,9 @@ verify_failed_services() {
     systemctl --failed --no-pager
 }
 
-################################################################################
+################
 # Recent Errors
-################################################################################
+################
 
 verify_logs() {
 
@@ -173,6 +258,10 @@ main() {
     system_information
 
     verify_services
+
+    check_disk_usage
+
+    check_memory
 
     verify_firewall
 
