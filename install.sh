@@ -47,4 +47,125 @@ require_root() {
 
 }
 
+#########
+# BANNER
+#########
+
+show_banner() {
+
+cat <<EOF
+
+=================================
+       TANTO VPS Bootstrap
+=================================
+
+Version: ${VERSION}
+
+EOF
+
+}
+
+########
+# HELP
+########
+
+show_help() {
+
+cat <<EOF
+
+Usage:
+
+sudo ./install.sh [OPTION]
+
+
+Options:
+
+  --full              Run complete VPS bootstrap
+  --system            Configure base system
+  --security          Apply security hardening
+  --swap              Configure swap memory
+  --docker            Install Docker
+  --nginx             Install and configure Nginx
+  --tailscale         Configure Tailscale
+  --backup            Configure backups
+  --verify            Run VPS health check
+  --cleanup           Cleanup system resources
+
+  --help              Show this help message
+  --version           Show installer version
+
+
+Examples:
+
+  sudo ./install.sh --full
+
+  sudo ./install.sh --docker
+
+  sudo ./install.sh --verify
+
+
+EOF
+
+}
+
+################
+# MODULE RUNNER
+################
+
+run_module() {
+
+    local module="$1"
+
+    local script="${MODULE_DIR}/${module}.sh"
+
+
+    if [[ ! -f "$script" ]]; then
+
+        error "Module not found: ${script}"
+
+        exit 1
+
+    fi
+
+
+    info "Running ${module}.sh..."
+
+
+    bash "$script"
+
+
+    info "${module}.sh completed successfully."
+
+}
+
+####################
+# FULL INSTALLATION
+####################
+
+run_full_installation() {
+
+    info "Starting full VPS bootstrap..."
+
+
+    local modules=(
+        system
+        security
+        swap
+        docker
+        nginx
+        tailscale
+    )
+
+
+    for module in "${modules[@]}"; do
+
+        run_module "$module"
+
+    done
+
+
+    info "Full VPS bootstrap completed successfully."
+
+}
+
 
