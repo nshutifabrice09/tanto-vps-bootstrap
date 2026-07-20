@@ -18,6 +18,35 @@ error() {
     echo -e "\e[31m[ERROR]\e[0m $1"
 }
 
+#######
+# HELP
+######
+
+show_help() {
+
+cat <<EOF
+
+Docker Installation Script
+
+Usage:
+
+sudo ./docker.sh [OPTION]
+
+
+Options:
+
+  --help       Show this help message
+  --version    Show script version
+
+
+Example:
+
+  sudo ./docker.sh
+
+EOF
+
+}
+
 #############
 # Root Check
 #############
@@ -212,9 +241,29 @@ verify_docker_installation() {
 
 main() {
 
-    info "Starting Docker installation..."
+    case "${1:-}" in
+
+        --help)
+
+            show_help
+            exit 0
+            ;;
+
+
+        --version)
+
+            echo "Docker installer version 1.0.0"
+            exit 0
+            ;;
+
+    esac
+
 
     require_root
+
+
+    info "Starting Docker installation..."
+
 
     remove_old_packages
 
@@ -232,7 +281,9 @@ main() {
 
     verify_docker_installation
 
+
     info "Docker installation completed successfully."
+
 }
 
 main "$@"
