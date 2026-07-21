@@ -2,6 +2,8 @@
 
 set -Eeuo pipefail
 
+VERSION="1.0.0"
+
 ################
 # Health Status
 ################
@@ -43,6 +45,62 @@ warn() {
     echo -e "\e[33m[WARN]\e[0m $1"
 }
 
+#######
+# Help
+#######
+
+show_help() {
+
+cat <<EOF
+
+VPS Verification Module
+
+Usage:
+
+./verify.sh [OPTION]
+
+Options:
+
+  --help, -h        Show this help message
+  --version, -v     Show module version
+
+Description:
+
+  Performs VPS health checks including:
+
+    • Operating system information
+    • Disk usage
+    • Memory usage
+    • Swap status
+    • Docker status
+    • Nginx status
+    • Running services
+    • Network availability
+
+Example:
+
+  sudo ./verify.sh
+
+EOF
+
+}
+
+command_exists() {
+
+    command -v "$1" >/dev/null 2>&1
+
+}
+
+##########
+# Version
+##########
+
+show_version() {
+
+    echo "VPS Verification Module v${VERSION}"
+
+}
+
 ##########
 # Helpers
 ##########
@@ -80,7 +138,15 @@ system_information() {
     echo "SYSTEM"
     echo "=============================="
 
-    hostnamectl
+    if command_exists hostnamectl; then
+
+        hostnamectl
+
+    else
+
+        echo "hostnamectl not available."
+
+    fi
 
     echo
     uptime
@@ -309,6 +375,40 @@ health_summary() {
 #######
 
 main() {
+
+    case "${1:-}" in
+
+        --help|-h)
+
+            show_help
+            exit 0
+            ;;
+
+
+        --version|-v)
+
+            show_version
+            exit 0
+            ;;
+
+
+        "")
+
+            ;;
+
+
+        *)
+
+            error "Unknown option: $1"
+
+            echo
+
+            show_help
+
+            exit 1
+            ;;
+
+    esac
 
     info "Running VPS verification..."
 
