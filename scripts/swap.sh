@@ -2,6 +2,8 @@
 
 set -Eeuo pipefail
 
+VERSION="1.0.0"
+
 ##########
 # Logging
 ##########
@@ -18,15 +20,72 @@ error() {
     echo -e "\e[31m[ERROR]\e[0m $1"
 }
 
+#######
+# Help
+#######
+
+show_help() {
+
+cat <<EOF
+
+Swap Configuration Module
+
+Usage:
+
+sudo ./swap.sh [OPTION]
+
+Options:
+
+  --help, -h        Show this help message
+  --version, -v     Show module version
+
+Description:
+
+  Creates and configures a Linux swap file by:
+
+    • Checking if swap already exists
+    • Creating a swap file
+    • Setting secure permissions
+    • Enabling swap
+    • Persisting configuration in /etc/fstab
+    • Optimizing vm.swappiness and vm.vfs_cache_pressure
+
+Example:
+
+  sudo ./swap.sh
+
+EOF
+
+}
+
+#########
+# Version
+#########
+
+show_version() {
+
+    echo "Swap Configuration Module v${VERSION}"
+
+}
+
 #############
 # Root Check
 #############
 
 require_root() {
+
     if [[ $EUID -ne 0 ]]; then
+
         error "This script must be run as root."
+
+        echo
+        echo "Try:"
+        echo "sudo ./swap.sh"
+
         exit 1
+
     fi
+
 }
 
 check_existing_swap() {
@@ -166,17 +225,56 @@ verify_swap_configuration() {
 
 main() {
 
-    info "Starting swap configuration..."
+    case "${1:-}" in
+
+        --help|-h)
+
+            show_help
+            exit 0
+            ;;
+
+        --version|-v)
+
+            show_version
+            exit 0
+            ;;
+
+        "")
+
+            ;;
+
+        *)
+
+            error "Unknown option: $1"
+            echo
+            show_help
+            exit 1
+            ;;
+
+    esac
+
 
     require_root
+
+
+    info "Starting swap configuration..."
+
+
     check_existing_swap
+
     determine_swap_size
-    create_Swap_file
+
+    create_swap_file
+
     persist_swap
+
     configure_kernel_parameters
+
     verify_swap_configuration
 
-   info "Swap configuration initialized."
+
+    info "Swap configuration completed successfully."
+
 }
 
 main "$@"
