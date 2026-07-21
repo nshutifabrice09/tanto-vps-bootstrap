@@ -207,8 +207,6 @@ main() {
 
     info "Starting system bootstrap..."
 
-    require_root
-
     update_system
 
     install_packages
