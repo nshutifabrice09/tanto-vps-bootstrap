@@ -2,9 +2,11 @@
 
 set -Eeuo pipefail
 
-################################################################################
+VERSION="1.0.0"
+
+################
 # Configuration
-################################################################################
+################
 
 JOURNAL_RETENTION="${JOURNAL_RETENTION:-14d}"
 TEMP_RETENTION_DAYS="${TEMP_RETENTION_DAYS:-3}"
@@ -13,9 +15,9 @@ DOCKER_RETENTION_DAYS="${DOCKER_RETENTION_DAYS:-7}"
 DRY_RUN=false
 
 
-################################################################################
+##########
 # Logging
-################################################################################
+##########
 
 info() {
     echo -e "\e[32m[INFO]\e[0m $1"
@@ -29,10 +31,57 @@ error() {
     echo -e "\e[31m[ERROR]\e[0m $1"
 }
 
+#######
+# Help
+#######
 
-################################################################################
+show_help() {
+
+cat <<EOF
+
+Cleanup Module
+
+Usage:
+
+sudo ./cleanup.sh [OPTION]
+
+Options:
+
+  --help, -h        Show this help message
+  --version, -v     Show module version
+
+Description:
+
+  Cleans unnecessary VPS resources by:
+
+    • Removing unused packages
+    • Cleaning apt cache
+    • Removing old temporary files
+    • Cleaning Docker resources
+    • Checking disk usage
+
+Example:
+
+  sudo ./cleanup.sh
+
+EOF
+
+}
+
+##########
+# Version
+##########
+
+show_version() {
+
+    echo "Cleanup Module v${VERSION}"
+
+}
+
+
+############
 # Arguments
-################################################################################
+############
 
 parse_arguments() {
 
@@ -40,15 +89,24 @@ parse_arguments() {
 
         case "$1" in
 
-            --dry-run)
+            --help|-h)
+                show_help
+                exit 0
+                ;;
 
+            --version|-v)
+                show_version
+                exit 0
+                ;;
+
+            --dry-run)
                 DRY_RUN=true
                 shift
                 ;;
 
             *)
-
                 error "Unknown option: $1"
+                show_help
                 exit 1
                 ;;
 
@@ -59,15 +117,19 @@ parse_arguments() {
 }
 
 
-################################################################################
+#############
 # Root Check
-################################################################################
+#############
 
 require_root() {
 
     if [[ $EUID -ne 0 ]]; then
 
         error "This script must be run as root."
+
+        echo
+        echo "Try:"
+        echo "sudo ./cleanup.sh"
 
         exit 1
 
@@ -76,9 +138,9 @@ require_root() {
 }
 
 
-################################################################################
+##########
 # Helpers
-################################################################################
+##########
 
 run_command() {
 
@@ -95,9 +157,9 @@ run_command() {
 }
 
 
-################################################################################
+##############
 # Disk Report
-################################################################################
+##############
 
 get_disk_usage() {
 
@@ -118,9 +180,9 @@ show_disk_usage() {
 }
 
 
-################################################################################
+##############
 # APT Cleanup
-################################################################################
+##############
 
 cleanup_apt() {
 
@@ -135,9 +197,9 @@ cleanup_apt() {
 }
 
 
-################################################################################
+##################
 # Journal Cleanup
-################################################################################
+##################
 
 cleanup_journal() {
 
@@ -149,9 +211,9 @@ cleanup_journal() {
 }
 
 
-################################################################################
+##########################
 # Temporary Files Cleanup
-################################################################################
+##########################
 
 cleanup_temp() {
 
@@ -171,9 +233,9 @@ cleanup_temp() {
 }
 
 
-################################################################################
+################
 # Crash Reports
-################################################################################
+################
 
 cleanup_crash_reports() {
 
@@ -186,9 +248,9 @@ cleanup_crash_reports() {
 }
 
 
-################################################################################
+#################
 # Docker Cleanup
-################################################################################
+#################
 
 cleanup_docker() {
 
@@ -210,9 +272,9 @@ cleanup_docker() {
 }
 
 
-################################################################################
+##########
 # Summary
-################################################################################
+##########
 
 show_summary() {
 
@@ -243,10 +305,33 @@ show_summary() {
 
 }
 
+##################
+# Confirm Cleanup
+##################
 
-################################################################################
+confirm_cleanup() {
+
+    read -r -p "Continue with cleanup? [y/N]: " response
+
+    case "$response" in
+
+        y|Y)
+            return 0
+            ;;
+
+        *)
+            info "Cleanup cancelled."
+            exit 0
+            ;;
+
+    esac
+
+}
+
+
+#######
 # Main
-################################################################################
+#######
 
 main() {
 
@@ -254,14 +339,14 @@ main() {
 
     require_root
 
+    confirm_cleanup
 
-    info "Starting VPS cleanup..."
+    info "Starting cleanup process..."
 
-    BEFORE=$(get_disk_usage)
+    local before
+    local after
 
-
-    show_disk_usage
-
+    before=$(get_disk_usage)
 
     cleanup_apt
 
@@ -273,19 +358,14 @@ main() {
 
     cleanup_docker
 
-
-    AFTER=$(get_disk_usage)
-
+    after=$(get_disk_usage)
 
     show_disk_usage
 
-
-    show_summary "$BEFORE" "$AFTER"
-
+    show_summary "$before" "$after"
 
     info "Cleanup completed successfully."
 
 }
-
 
 main "$@"
