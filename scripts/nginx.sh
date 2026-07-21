@@ -2,6 +2,8 @@
 
 set -Eeuo pipefail
 
+VERSION="1.0.0"
+
 ##########
 # Logging
 ##########
@@ -16,6 +18,53 @@ warn() {
 
 error() {
     echo -e "\e[31m[ERROR]\e[0m $1"
+}
+
+#######
+# Help
+#######
+
+show_help() {
+
+cat <<EOF
+
+Nginx Installation Module
+
+Usage:
+
+sudo ./nginx.sh [OPTION]
+
+Options:
+
+  --help, -h        Show this help message
+  --version, -v     Show module version
+
+Description:
+
+  Installs and configures Nginx by:
+
+    • Installing Nginx package
+    • Enabling Nginx service
+    • Configuring firewall access
+    • Validating configuration
+    • Restarting the service
+
+Example:
+
+  sudo ./nginx.sh
+
+EOF
+
+}
+
+##########
+# Version
+##########
+
+show_version() {
+
+    echo "Nginx Installation Module v${VERSION}"
+
 }
 
 #############
@@ -155,9 +204,46 @@ verify_nginx() {
 
 main() {
 
-    info "Starting Nginx installation..."
+    case "${1:-}" in
+
+        --help|-h)
+
+            show_help
+            exit 0
+            ;;
+
+
+        --version|-v)
+
+            show_version
+            exit 0
+            ;;
+
+
+        "")
+
+            ;;
+
+
+        *)
+
+            error "Unknown option: $1"
+
+            echo
+
+            show_help
+
+            exit 1
+            ;;
+
+    esac
+
 
     require_root
+
+
+    info "Starting Nginx installation..."
+
 
     install_nginx
 
@@ -171,7 +257,9 @@ main() {
 
     verify_nginx
 
+
     info "Nginx installed successfully."
+
 }
 
 main "$@"
