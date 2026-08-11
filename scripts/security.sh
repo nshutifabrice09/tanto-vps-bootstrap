@@ -2,6 +2,8 @@
 
 set -Eeuo pipefail
 
+source "$(dirname "$0")/../lib/common.sh"
+
 VERSION="1.0.0"
 
 LOG_FILE="/var/log/gc-vps-bootstrap-security.log"
@@ -74,13 +76,6 @@ backup_file() {
     if [[ -f "$file" ]]; then
         cp "$file" "${file}.bak.$(date +%F-%H%M%S)"
         log "Backup created for $file"
-    fi
-}
-
-require_root() {
-    if [[ "${EUID}" -ne 0 ]]; then
-        error "This script must be run as root."
-        exit 1
     fi
 }
 
