@@ -2,6 +2,8 @@
 
 set -Eeuo pipefail
 
+source "$(dirname "$0")/../lib/common.sh"
+
 VERSION="1.0.0"
 
 ##########
