@@ -6,22 +6,6 @@ source "$(dirname "$0")/../lib/common.sh"
 
 VERSION="1.0.0"
 
-##########
-# Logging
-##########
-
-info() {
-    echo -e "\e[32m[INFO]\e[0m $1"
-}
-
-warn() {
-    echo -e "\e[33m[WARN]\e[0m $1"
-}
-
-error() {
-    echo -e "\e[31m[ERROR]\e[0m $1"
-}
-
 #######
 # Help
 #######
@@ -73,22 +57,6 @@ show_version() {
 #############
 # Root Check
 #############
-
-require_root() {
-
-    if [[ $EUID -ne 0 ]]; then
-
-        error "This script must be run as root."
-
-        echo
-        echo "Try:"
-        echo "sudo ./swap.sh"
-
-        exit 1
-
-    fi
-
-}
 
 check_existing_swap() {
 
