@@ -55,7 +55,6 @@ Options:
   --swap              Configure swap memory
   --docker            Install Docker
   --nginx             Install and configure Nginx
-  --tailscale         Configure Tailscale
   --backup            Configure backups
   --verify            Run VPS health check
   --cleanup           Cleanup system resources
@@ -215,7 +214,6 @@ parse_arguments() {
         --swap|\
         --docker|\
         --nginx|\
-        --tailscale|\
         --backup|\
         --verify|\
         --cleanup)
@@ -246,82 +244,46 @@ main() {
 
     show_banner
 
-    local action
-
-    if parse_arguments "$@"; then
-        exit 0
-    else
-        action=$?
-    fi
-
-    # parse_arguments returns 2 when an actual action
-    # requires execution.
-    if [[ "$action" -ne 2 ]]; then
-        exit "$action"
-    fi
+    parse_arguments "$@"
 
     require_root
 
     case "$1" in
 
         --full)
-
             run_full_installation
-
             ;;
 
         --system)
-
             run_module system
-
             ;;
 
         --security)
-
             run_module security
-
             ;;
 
         --swap)
-
             run_module swap
-
             ;;
 
         --docker)
-
             run_module docker
-
             ;;
 
         --nginx)
-
             run_module nginx
-
-            ;;
-
-        --tailscale)
-
-            run_module tailscale
-
             ;;
 
         --backup)
-
             run_module backup
-
             ;;
 
         --verify)
-
             run_module verify
-
             ;;
 
         --cleanup)
-
             run_module cleanup
-
             ;;
 
     esac
