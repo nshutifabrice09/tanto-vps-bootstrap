@@ -2,6 +2,8 @@
 
 set -Eeuo pipefail
 
+source "$(dirname "$0")/../lib/common.sh"
+
 VERSION="1.0.0"
 
 ################
@@ -30,19 +32,6 @@ add_critical() {
     CRITICALS+=("$1")
 
     EXIT_CODE=2
-}
-
-
-##########
-# Logging
-##########
-
-info() {
-    echo -e "\e[32m[INFO]\e[0m $1"
-}
-
-warn() {
-    echo -e "\e[33m[WARN]\e[0m $1"
 }
 
 #######
