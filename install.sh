@@ -179,7 +179,7 @@ parse_arguments() {
 
         show_help
 
-        return 1
+        exit 1
 
     fi
 
@@ -191,7 +191,7 @@ parse_arguments() {
 
         show_help
 
-        return 1
+        exit 1
 
     fi
 
@@ -200,17 +200,13 @@ parse_arguments() {
         --help|-h)
 
             show_help
-
-            return 0
-
+            exit 0
             ;;
 
         --version|-v)
 
             show_version
-
-            return 0
-
+            exit 0
             ;;
 
         --full|\
@@ -224,8 +220,7 @@ parse_arguments() {
         --verify|\
         --cleanup)
 
-            return 2
-
+            return 0
             ;;
 
         *)
@@ -236,14 +231,12 @@ parse_arguments() {
 
             show_help
 
-            return 1
-
+            exit 1
             ;;
 
     esac
 
 }
-
 
 #######
 # MAIN
