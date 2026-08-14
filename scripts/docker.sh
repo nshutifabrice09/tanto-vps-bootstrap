@@ -6,26 +6,25 @@ source "$(dirname "$0")/../lib/common.sh"
 
 VERSION="1.0.0"
 
+
 #######
 # HELP
 #######
 
 show_help() {
 
-cat <<EOF
+    cat <<EOF
 
-Docker Installation Script
+Docker Installation Module
 
 Usage:
 
-sudo ./docker.sh [OPTION]
-
+  sudo ./docker.sh [OPTION]
 
 Options:
 
-  --help       Show this help message
-  --version    Show script version
-
+  --help, -h       Show this help message
+  --version, -v    Show module version
 
 Example:
 
@@ -34,6 +33,7 @@ Example:
 EOF
 
 }
+
 
 #########
 # Version
@@ -45,6 +45,7 @@ show_version() {
 
 }
 
+
 ######################
 # Remove Old Packages
 ######################
@@ -53,18 +54,28 @@ remove_old_packages() {
 
     info "Removing conflicting Docker packages..."
 
-    for pkg in \
-        docker.io \
-        docker-doc \
-        docker-compose \
-        docker-compose-v2 \
-        podman-docker \
-        containerd \
+    require_command apt-get
+
+    local packages=(
+        docker.io
+        docker-doc
+        docker-compose
+        docker-compose-v2
+        podman-docker
+        containerd
         runc
-    do
-        apt-get remove -y "$pkg" >/dev/null 2>&1 || true
+    )
+
+    for package in "${packages[@]}"; do
+
+        apt-get remove -y "$package" >/dev/null 2>&1 || true
+
     done
+
+    info "Conflicting Docker packages removed."
+
 }
+
 
 ########################
 # Install Prerequisites
@@ -74,14 +85,19 @@ install_prerequisites() {
 
     info "Installing Docker prerequisites..."
 
-    apt-get update
+    require_command apt-get
 
-    apt-get install -y \
+    run_command apt-get update
+
+    run_command apt-get install -y \
         ca-certificates \
         curl \
-        gnupg \
-        lsb-release
+        gnupg
+
+    info "Docker prerequisites installed."
+
 }
+
 
 #########################
 # Install Docker GPG Key
@@ -91,16 +107,22 @@ install_docker_gpg_key() {
 
     info "Installing Docker GPG key..."
 
-    install -m 0755 -d /etc/apt/keyrings
+    require_command install
+    require_command curl
+    require_command gpg
+
+    run_command install -m 0755 -d /etc/apt/keyrings
 
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
         | gpg --dearmor \
         -o /etc/apt/keyrings/docker.gpg
 
-    chmod a+r /etc/apt/keyrings/docker.gpg
+    run_command chmod a+r /etc/apt/keyrings/docker.gpg
 
     info "Docker GPG key installed."
+
 }
+
 
 ########################
 # Add Docker Repository
@@ -110,17 +132,36 @@ add_docker_repository() {
 
     info "Adding Docker repository..."
 
-    ARCH=$(dpkg --print-architecture)
-    CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
+    require_command dpkg
+    require_command tee
+
+    local arch
+    local codename
+
+    arch="$(dpkg --print-architecture)"
+    codename="$(
+        . /etc/os-release
+        echo "$VERSION_CODENAME"
+    )"
+
+    if [[ -z "$codename" ]]; then
+
+        error "Unable to determine Ubuntu release codename."
+
+        exit 1
+
+    fi
 
     echo \
-        "deb [arch=${ARCH} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${CODENAME} stable" \
+        "deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${codename} stable" \
         | tee /etc/apt/sources.list.d/docker.list >/dev/null
 
-    apt-get update
+    run_command apt-get update
 
     info "Docker repository configured."
+
 }
+
 
 #################
 # Install Docker
@@ -130,18 +171,23 @@ install_docker() {
 
     info "Installing Docker Engine..."
 
-    apt-get install -y \
+    require_command apt-get
+    require_command systemctl
+
+    run_command apt-get install -y \
         docker-ce \
         docker-ce-cli \
         containerd.io \
         docker-buildx-plugin \
         docker-compose-plugin
 
-    systemctl enable docker
-    systemctl start docker
+    run_command systemctl enable docker
+    run_command systemctl start docker
 
-    info "Docker installed successfully."
+    info "Docker Engine installed."
+
 }
+
 
 ########################
 # Configure Docker User
@@ -152,10 +198,16 @@ configure_docker_user() {
     info "Configuring Docker user..."
 
     if [[ -z "${SUDO_USER:-}" ]]; then
+
         warn "Unable to determine the invoking user."
+        warn "Docker group configuration skipped."
 
         return
+
     fi
+
+    require_command id
+    require_command usermod
 
     if id -nG "$SUDO_USER" | grep -qw docker; then
 
@@ -163,14 +215,16 @@ configure_docker_user() {
 
     else
 
-        usermod -aG docker "$SUDO_USER"
+        run_command usermod -aG docker "$SUDO_USER"
 
         info "Added '$SUDO_USER' to the docker group."
 
         warn "Please log out and back in before using Docker without sudo."
 
     fi
+
 }
+
 
 ##########################
 # Configure Docker Daemon
@@ -180,7 +234,10 @@ configure_docker_daemon() {
 
     info "Configuring Docker daemon..."
 
-    mkdir -p /etc/docker
+    require_command mkdir
+    require_command systemctl
+
+    run_command mkdir -p /etc/docker
 
     cat > /etc/docker/daemon.json <<EOF
 {
@@ -196,14 +253,26 @@ configure_docker_daemon() {
 }
 EOF
 
-    if command -v dockerd >/dev/null; then
-        dockerd --validate --config-file /etc/docker/daemon.json
+    if command -v dockerd >/dev/null 2>&1; then
+
+        info "Validating Docker daemon configuration..."
+
+        dockerd \
+            --validate \
+            --config-file /etc/docker/daemon.json
+
+    else
+
+        warn "dockerd command not found. Skipping configuration validation."
+
     fi
 
-    systemctl restart docker
+    run_command systemctl restart docker
 
     info "Docker daemon configured."
+
 }
+
 
 ######################
 # Verify Installation
@@ -213,44 +282,61 @@ verify_docker_installation() {
 
     info "Verifying Docker installation..."
 
+    require_command docker
+
     docker --version
     docker compose version
     docker buildx version
 
+    info "Testing Docker container execution..."
+
     docker run --rm hello-world
 
     info "Docker verification completed successfully."
+
 }
 
+
 #######
-# Main
+# MAIN
 #######
 
 main() {
 
     case "${1:-}" in
 
-        --help)
+        --help|-h)
 
             show_help
             exit 0
             ;;
 
+        --version|-v)
 
-        --version)
-
-            echo "Docker installer version 1.0.0"
+            show_version
             exit 0
+            ;;
+
+        "")
+
+            ;;
+
+        *)
+
+            error "Unknown option: $1"
+
+            echo
+
+            show_help
+
+            exit 1
             ;;
 
     esac
 
-
     require_root
 
-
     info "Starting Docker installation..."
-
 
     remove_old_packages
 
@@ -268,9 +354,9 @@ main() {
 
     verify_docker_installation
 
-
-    info "Docker installation completed successfully."
+    success "Docker installation completed successfully."
 
 }
+
 
 main "$@"
