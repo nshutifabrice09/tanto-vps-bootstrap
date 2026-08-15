@@ -6,19 +6,20 @@ source "$(dirname "$0")/../lib/common.sh"
 
 VERSION="1.0.0"
 
+
 #######
 # Help
 #######
 
 show_help() {
 
-cat <<EOF
+    cat <<EOF
 
 Nginx Installation Module
 
 Usage:
 
-sudo ./nginx.sh [OPTION]
+  sudo ./nginx.sh [OPTION]
 
 Options:
 
@@ -32,8 +33,10 @@ Description:
     • Installing Nginx package
     • Enabling Nginx service
     • Configuring firewall access
+    • Applying the Nginx configuration
     • Validating configuration
     • Restarting the service
+    • Verifying the installation
 
 Example:
 
@@ -42,6 +45,7 @@ Example:
 EOF
 
 }
+
 
 ##########
 # Version
@@ -53,6 +57,7 @@ show_version() {
 
 }
 
+
 ################
 # Install Nginx
 ################
@@ -61,14 +66,20 @@ install_nginx() {
 
     info "Installing Nginx..."
 
-    apt-get update
+    require_command apt-get
+    require_command systemctl
 
-    apt-get install -y nginx
+    run_command apt-get update
 
-    systemctl enable nginx
+    run_command apt-get install -y nginx
 
-    systemctl start nginx
+    run_command systemctl enable nginx
+    run_command systemctl start nginx
+
+    info "Nginx package installed."
+
 }
+
 
 #####################
 # Configure Firewall
@@ -76,18 +87,20 @@ install_nginx() {
 
 configure_firewall() {
 
-    if command -v ufw >/dev/null; then
-
-        info "Allowing HTTP and HTTPS through UFW..."
-
-        ufw allow "Nginx Full"
-
-    else
+    if ! command -v ufw >/dev/null 2>&1; then
 
         warn "UFW is not installed. Skipping firewall configuration."
 
+        return
+
     fi
+
+    info "Allowing HTTP and HTTPS through UFW..."
+
+    run_command ufw allow "Nginx Full"
+
 }
+
 
 #######################
 # Configure nginx.conf
@@ -95,12 +108,29 @@ configure_firewall() {
 
 configure_nginx() {
 
-    info "Configuring nginx..."
+    info "Configuring Nginx..."
 
-    cp /etc/nginx/nginx.conf \
-       /etc/nginx/nginx.conf.bak
+    require_command cp
+    require_command mkdir
 
-    cat >/etc/nginx/nginx.conf <<'EOF'
+    local config_file="/etc/nginx/nginx.conf"
+    local backup_file
+
+    if [[ ! -f "$config_file" ]]; then
+
+        error "Nginx configuration file not found: ${config_file}"
+
+        exit 1
+
+    fi
+
+    backup_file="${config_file}.bak.$(date '+%Y%m%d-%H%M%S')"
+
+    run_command cp "$config_file" "$backup_file"
+
+    info "Nginx configuration backup created: ${backup_file}"
+
+    cat > "$config_file" <<'EOF'
 user www-data;
 worker_processes auto;
 pid /run/nginx.pid;
@@ -151,31 +181,72 @@ http {
 }
 EOF
 
+    info "Nginx configuration applied."
+
 }
+
+
+##################
+# Validate Nginx
+##################
 
 validate_nginx() {
 
-    info "Validating nginx configuration..."
+    info "Validating Nginx configuration..."
 
-    nginx -t
+    require_command nginx
+
+    run_command nginx -t
+
 }
+
+
+##################
+# Restart Nginx
+##################
 
 restart_nginx() {
 
-    info "Restarting nginx..."
+    info "Restarting Nginx..."
 
-    systemctl restart nginx
+    require_command systemctl
+
+    run_command systemctl restart nginx
+
 }
+
+
+#################
+# Verify Nginx
+#################
 
 verify_nginx() {
 
-    info "Verifying nginx..."
+    info "Verifying Nginx..."
 
-    systemctl --no-pager --full status nginx
+    require_command nginx
+    require_command systemctl
+
+    if ! systemctl is-active --quiet nginx; then
+
+        error "Nginx service is not running."
+
+        systemctl --no-pager --full status nginx || true
+
+        exit 1
+
+    fi
 
     nginx -v
+
+    info "Nginx service is running."
+
 }
 
+
+#######
+# Main
+#######
 
 main() {
 
@@ -187,18 +258,15 @@ main() {
             exit 0
             ;;
 
-
         --version|-v)
 
             show_version
             exit 0
             ;;
 
-
         "")
 
             ;;
-
 
         *)
 
@@ -213,12 +281,9 @@ main() {
 
     esac
 
-
     require_root
 
-
     info "Starting Nginx installation..."
-
 
     install_nginx
 
@@ -232,10 +297,9 @@ main() {
 
     verify_nginx
 
-
-    info "Nginx installed successfully."
+    success "Nginx installation completed successfully."
 
 }
 
-main "$@"
 
+main "$@"
