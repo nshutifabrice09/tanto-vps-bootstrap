@@ -8,37 +8,39 @@ VERSION="1.0.0"
 
 LOG_FILE="/var/log/gc-vps-bootstrap-security.log"
 
+
+##########
+# Logging
+##########
+
 initialize_logging() {
 
-   mkdir -p "$(dirname "$LOG_FILE")"
+    mkdir -p "$(dirname "$LOG_FILE")"
 
 }
 
 log() {
-    echo "[$(date '+%F %T')] $*" | tee -a "$LOG_FILE"
-}
 
-error() {
-
-    local message="[$(date '+%F %T')] ERROR: $*"
-
-    if [[ -w "$(dirname "$LOG_FILE")" || $EUID -eq 0 ]]; then
-        echo "$message" | tee -a "$LOG_FILE" >&2
-    else
-        echo "$message" >&2
-    fi
+    printf '[%s] %s\n' \
+        "$(date '+%F %T')" \
+        "$*" | tee -a "$LOG_FILE"
 
 }
+
+
+#######
+# Help
+#######
 
 show_help() {
 
-cat <<EOF
+    cat <<EOF
 
 Security Hardening Module
 
 Usage:
 
-sudo ./security.sh [OPTION]
+  sudo ./security.sh [OPTION]
 
 Options:
 
@@ -64,70 +66,133 @@ EOF
 
 }
 
+
+##########
+# Version
+##########
+
 show_version() {
 
     echo "Security Hardening Module v${VERSION}"
 
 }
 
+
+##############
+# Backup File
+##############
+
 backup_file() {
+
     local file="$1"
 
-    if [[ -f "$file" ]]; then
-        cp "$file" "${file}.bak.$(date +%F-%H%M%S)"
-        log "Backup created for $file"
+    if [[ ! -f "$file" ]]; then
+
+        warn "File not found. Backup skipped: ${file}"
+
+        return
+
     fi
+
+    local backup
+
+    backup="${file}.bak.$(date '+%Y%m%d-%H%M%S')"
+
+    cp "$file" "$backup"
+
+    log "Backup created: ${backup}"
+
 }
 
-initialize_logging() {
 
-    mkdir -p "$(dirname "$LOG_FILE")"
-
-}
+#####################
+# Detect SSH Service
+#####################
 
 detect_ssh_service() {
-    if systemctl list-unit-files | grep -q "^ssh.service"; then
+
+    require_command systemctl
+
+    if systemctl list-unit-files | grep -q '^ssh.service'; then
+
         echo "ssh"
-    elif systemctl list-unit-files | grep -q "^sshd.service"; then
+
+    elif systemctl list-unit-files | grep -q '^sshd.service'; then
+
         echo "sshd"
+
     else
+
         error "Unable to determine SSH service name."
+
         exit 1
+
     fi
+
 }
 
+
+################################
+# Configure Unattended Upgrades
+################################
+
 configure_unattended_upgrades() {
+
     log "Installing automatic security update packages..."
 
-    apt install -y \
+    require_command apt-get
+    require_command dpkg
+    require_command systemctl
+
+    run_command apt-get install -y \
         unattended-upgrades \
         apt-listchanges
 
-    dpkg-reconfigure -f noninteractive unattended-upgrades
+    run_command dpkg-reconfigure \
+        -f noninteractive \
+        unattended-upgrades
 
-    systemctl enable unattended-upgrades
-    systemctl restart unattended-upgrades
+    run_command systemctl enable unattended-upgrades
+    run_command systemctl restart unattended-upgrades
 
     log "Automatic security updates enabled."
+
 }
+
+
+################
+# Configure UFW
+################
 
 configure_ufw() {
+
     log "Configuring UFW firewall..."
 
-    ufw default deny incoming
-    ufw default allow outgoing
+    require_command ufw
 
-    ufw allow OpenSSH
-    ufw allow 80/tcp
-    ufw allow 443/tcp
+    run_command ufw default deny incoming
+    run_command ufw default allow outgoing
 
-    ufw --force enable
+    run_command ufw allow OpenSSH
+    run_command ufw allow 80/tcp
+    run_command ufw allow 443/tcp
+
+    run_command ufw --force enable
 
     log "UFW firewall configured."
+
 }
 
+
+#####################
+# Configure Fail2Ban
+#####################
+
 configure_fail2ban() {
+
     log "Configuring Fail2Ban..."
+
+    require_command systemctl
 
     cat > /etc/fail2ban/jail.local <<'EOF'
 [DEFAULT]
@@ -139,58 +204,113 @@ maxretry = 5
 enabled = true
 EOF
 
-    systemctl enable fail2ban
-    systemctl restart fail2ban
+    run_command systemctl enable fail2ban
+    run_command systemctl restart fail2ban
 
     log "Fail2Ban configured."
+
 }
+
+
+###################
+# Configure Auditd
+###################
 
 configure_auditd() {
+
     log "Enabling auditd..."
 
-    systemctl enable auditd
-    systemctl restart auditd
+    require_command systemctl
+
+    run_command systemctl enable auditd
+    run_command systemctl restart auditd
 
     log "Auditd enabled."
+
 }
 
+
+#############
+# Harden SSH
+#############
+
 harden_ssh() {
+
     local ssh_service
-    ssh_service=$(detect_ssh_service)
+    local ssh_config="/etc/ssh/sshd_config"
+
+    ssh_service="$(detect_ssh_service)"
 
     log "Hardening SSH..."
 
-    backup_file /etc/ssh/sshd_config
+    require_command sed
+    require_command grep
+    require_command sshd
+    require_command systemctl
 
-    sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' \
-        /etc/ssh/sshd_config
+    if [[ ! -f "$ssh_config" ]]; then
 
-    sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' \
-        /etc/ssh/sshd_config
+        error "SSH configuration file not found: ${ssh_config}"
 
-    sed -i 's/^#\?X11Forwarding.*/X11Forwarding no/' \
-        /etc/ssh/sshd_config
+        exit 1
 
-    if ! grep -q "^PermitRootLogin" /etc/ssh/sshd_config; then
-        echo "PermitRootLogin no" >> /etc/ssh/sshd_config
     fi
 
-    if ! grep -q "^PasswordAuthentication" /etc/ssh/sshd_config; then
-        echo "PasswordAuthentication no" >> /etc/ssh/sshd_config
+    backup_file "$ssh_config"
+
+    sed -i \
+        's/^#\?PermitRootLogin.*/PermitRootLogin no/' \
+        "$ssh_config"
+
+    sed -i \
+        's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' \
+        "$ssh_config"
+
+    sed -i \
+        's/^#\?X11Forwarding.*/X11Forwarding no/' \
+        "$ssh_config"
+
+
+    if ! grep -q '^PermitRootLogin' "$ssh_config"; then
+
+        echo "PermitRootLogin no" >> "$ssh_config"
+
     fi
 
-    if ! grep -q "^X11Forwarding" /etc/ssh/sshd_config; then
-        echo "X11Forwarding no" >> /etc/ssh/sshd_config
+
+    if ! grep -q '^PasswordAuthentication' "$ssh_config"; then
+
+        echo "PasswordAuthentication no" >> "$ssh_config"
+
     fi
 
-    sshd -t
 
-    systemctl restart "$ssh_service"
+    if ! grep -q '^X11Forwarding' "$ssh_config"; then
+
+        echo "X11Forwarding no" >> "$ssh_config"
+
+    fi
+
+
+    log "Validating SSH configuration..."
+
+    run_command sshd -t
+
+    log "SSH configuration is valid."
+
+    run_command systemctl restart "$ssh_service"
 
     log "SSH hardening completed."
+
 }
 
+
+###################
+# Security Summary
+###################
+
 security_summary() {
+
     log "Security configuration complete."
 
     echo
@@ -199,15 +319,30 @@ security_summary() {
     echo "========================================"
     echo
 
-    ufw status verbose || true
+    if command -v ufw >/dev/null 2>&1; then
+
+        ufw status verbose || true
+
+    fi
 
     echo
-    fail2ban-client status sshd || true
+
+    if command -v fail2ban-client >/dev/null 2>&1; then
+
+        fail2ban-client status sshd || true
+
+    fi
 
     echo
     echo "Log file:"
     echo "$LOG_FILE"
+
 }
+
+
+#######
+# Main
+#######
 
 main() {
 
@@ -231,9 +366,12 @@ main() {
 
         *)
 
-            echo "Unknown option: $1"
+            error "Unknown option: $1"
+
             echo
+
             show_help
+
             exit 1
             ;;
 
@@ -245,19 +383,30 @@ main() {
 
     log "Starting security hardening..."
 
-    apt update
+    require_command apt-get
 
-    apt install -y \
+    run_command apt-get update
+
+    run_command apt-get install -y \
         ufw \
         fail2ban \
         auditd
 
     configure_unattended_upgrades
-    harden_ssh
+
     configure_ufw
+
     configure_fail2ban
+
     configure_auditd
 
+    harden_ssh
+
     security_summary
+
+    success "Security hardening completed successfully."
+
 }
+
+
 main "$@"
