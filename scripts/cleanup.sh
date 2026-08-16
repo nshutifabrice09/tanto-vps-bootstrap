@@ -34,6 +34,7 @@ Options:
 
   --help, -h        Show this help message
   --version, -v     Show module version
+  --dry-run         Show cleanup commands without executing them
 
 Description:
 
@@ -217,7 +218,7 @@ cleanup_crash_reports() {
 
 cleanup_docker() {
 
-    if ! command -v docker >/dev/null; then
+    if ! command -v docker >/dev/null 2>&1; then
 
         warn "Docker not installed. Skipping Docker cleanup."
 
@@ -274,6 +275,11 @@ show_summary() {
 
 confirm_cleanup() {
 
+    if [[ "$DRY_RUN" == true ]]; then
+        info "Dry-run mode enabled. No changes will be made."
+        return 0
+    fi
+
     read -r -p "Continue with cleanup? [y/N]: " response
 
     case "$response" in
@@ -302,6 +308,11 @@ main() {
 
     require_root
 
+    require_command apt-get
+    require_command journalctl
+    require_command find
+    require_command df
+
     confirm_cleanup
 
     info "Starting cleanup process..."
@@ -312,22 +323,17 @@ main() {
     before=$(get_disk_usage)
 
     cleanup_apt
-
     cleanup_journal
-
     cleanup_temp
-
     cleanup_crash_reports
-
     cleanup_docker
 
     after=$(get_disk_usage)
 
     show_disk_usage
-
     show_summary "$before" "$after"
 
-    info "Cleanup completed successfully."
+    success "Cleanup completed successfully."
 
 }
 
