@@ -7,15 +7,19 @@ set -Eeuo pipefail
 ##################
 
 info() {
-    printf '\033[32m[INFO]\033[0m %s\n' "$*"
+    echo -e "\e[32m[INFO]\e[0m $1"
+}
+
+success() {
+    echo -e "\e[32m[SUCCESS]\e[0m $1"
 }
 
 warn() {
-    printf '\033[33m[WARN]\033[0m %s\n' "$*" >&2
+    echo -e "\e[33m[WARN]\e[0m $1"
 }
 
 error() {
-    printf '\033[31m[ERROR]\033[0m %s\n' "$*" >&2
+    echo -e "\e[31m[ERROR]\e[0m $1"
 }
 
 
@@ -25,12 +29,13 @@ error() {
 
 require_root() {
 
-    if [[ "${EUID}" -ne 0 ]]; then
+    if [[ $EUID -ne 0 ]]; then
 
         error "This script must be run as root."
 
-        printf '\n'
-        printf 'Try: sudo %s\n' "${0##*/}"
+        echo
+        echo "Try:"
+        echo "sudo $0"
 
         exit 1
 
@@ -38,10 +43,9 @@ require_root() {
 
 }
 
-
-#################
-# Command Check
-#################
+#####################
+# Command Validation
+#####################
 
 require_command() {
 
@@ -58,9 +62,9 @@ require_command() {
 }
 
 
-##################
+#################
 # Command Runner
-##################
+#################
 
 run_command() {
 
