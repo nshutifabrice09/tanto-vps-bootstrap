@@ -276,8 +276,11 @@ show_summary() {
 confirm_cleanup() {
 
     if [[ "$DRY_RUN" == true ]]; then
+
         info "Dry-run mode enabled. No changes will be made."
+
         return 0
+
     fi
 
     read -r -p "Continue with cleanup? [y/N]: " response
