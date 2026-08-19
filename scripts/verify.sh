@@ -4,7 +4,7 @@ set -Eeuo pipefail
 
 source "$(dirname "$0")/../lib/common.sh"
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 ################
 # Health Status
@@ -13,8 +13,8 @@ VERSION="1.0.0"
 EXIT_CODE=0
 
 WARNINGS=()
-
 CRITICALS=()
+
 
 #################
 # Health Helpers
@@ -24,7 +24,10 @@ add_warning() {
 
     WARNINGS+=("$1")
 
-    [[ $EXIT_CODE -lt 1 ]] && EXIT_CODE=1
+    if [[ "$EXIT_CODE" -lt 1 ]]; then
+        EXIT_CODE=1
+    fi
+
 }
 
 add_critical() {
@@ -32,7 +35,30 @@ add_critical() {
     CRITICALS+=("$1")
 
     EXIT_CODE=2
+
 }
+
+
+check_pass() {
+
+    printf "  %-30s : PASS\n" "$1"
+
+}
+
+
+check_warn() {
+
+    printf "  %-30s : WARN\n" "$1"
+
+}
+
+
+check_fail() {
+
+    printf "  %-30s : FAIL\n" "$1"
+
+}
+
 
 #######
 # Help
@@ -42,11 +68,11 @@ show_help() {
 
 cat <<EOF
 
-VPS Verification Module
+TANTO VPS Verification Module
 
 Usage:
 
-./verify.sh [OPTION]
+  sudo ./verify.sh [OPTION]
 
 Options:
 
@@ -55,16 +81,30 @@ Options:
 
 Description:
 
-  Performs VPS health checks including:
+  Performs read-only VPS health checks including:
 
-    • Operating system information
+    • Operating system
+    • CPU and memory
     • Disk usage
-    • Memory usage
-    • Swap status
-    • Docker status
-    • Nginx status
-    • Running services
-    • Network availability
+    • Swap
+    • SSH
+    • Docker
+    • Nginx
+    • UFW firewall
+    • Fail2Ban
+    • Auditd
+    • Unattended upgrades
+    • Failed systemd services
+    • Network connectivity
+    • DNS resolution
+    • Listening ports
+    • Recent system errors
+
+Exit codes:
+
+  0                 Healthy
+  1                 Healthy with warnings
+  2                 Critical issues detected
 
 Example:
 
@@ -74,11 +114,6 @@ EOF
 
 }
 
-command_exists() {
-
-    command -v "$1" >/dev/null 2>&1
-
-}
 
 ##########
 # Version
@@ -86,35 +121,84 @@ command_exists() {
 
 show_version() {
 
-    echo "VPS Verification Module v${VERSION}"
+    printf 'TANTO VPS Verification Module v%s\n' "$VERSION"
 
 }
 
-##########
-# Helpers
-##########
+
+####################
+# Service Detection
+####################
+
+detect_ssh_service() {
+
+    if systemctl list-unit-files --type=service 2>/dev/null |
+        grep -q '^ssh.service'; then
+
+        printf 'ssh\n'
+
+    elif systemctl list-unit-files --type=service 2>/dev/null |
+        grep -q '^sshd.service'; then
+
+        printf 'sshd\n'
+
+    else
+
+        return 1
+
+    fi
+
+}
+
+
+#######################
+# Service Verification
+#######################
 
 check_service() {
 
     local service="$1"
     local required="${2:-true}"
 
+    if ! systemctl list-unit-files "${service}.service" >/dev/null 2>&1; then
+
+        if [[ "$required" == "true" ]]; then
+            add_critical "${service} service is not installed"
+            check_fail "${service} installed"
+        else
+            check_warn "${service} installed"
+            add_warning "${service} service is not installed"
+        fi
+
+        return
+
+    fi
+
+
     if systemctl is-active --quiet "$service"; then
 
-        printf "  %-20s : ✅ Running\n" "$service"
+        check_pass "${service} service"
 
     else
 
-        printf "  %-20s : ❌ Not running\n" "$service"
-
         if [[ "$required" == "true" ]]; then
-            add_critical "$service service is not running"
+
+            check_fail "${service} service"
+
+            add_critical "${service} service is not running"
+
         else
-            add_warning "$service service is not running"
+
+            check_warn "${service} service"
+
+            add_warning "${service} service is not running"
+
         fi
 
     fi
+
 }
+
 
 #####################
 # System Information
@@ -122,122 +206,304 @@ check_service() {
 
 system_information() {
 
-    echo
-    echo "=============================="
-    echo "SYSTEM"
-    echo "=============================="
+    printf '\n'
+    printf '%s\n' "=============================="
+    printf '%s\n' "SYSTEM"
+    printf '%s\n' "=============================="
 
-    if command_exists hostnamectl; then
 
-        hostnamectl
+    if [[ -f /etc/os-release ]]; then
 
-    else
+        . /etc/os-release
 
-        echo "hostnamectl not available."
+        printf '  %-30s : %s\n' "Operating System" "${PRETTY_NAME:-Unknown}"
 
     fi
 
-    echo
-    uptime
 
-    echo
-    free -h
+    printf '  %-30s : %s\n' "Hostname" "$(hostname)"
 
-    echo
-    df -h /
+    printf '  %-30s : %s\n' "Kernel" "$(uname -r)"
 
-    echo
-    swapon --show || true
+    printf '  %-30s : %s\n' "Architecture" "$(uname -m)"
+
+    printf '  %-30s : %s\n' "Uptime" "$(uptime -p)"
+
+
+    if command -v nproc >/dev/null 2>&1; then
+
+        printf '  %-30s : %s\n' "CPU Cores" "$(nproc)"
+
+    fi
+
 }
 
-###########
-# Services
-###########
+
+##################
+# Resource Checks
+##################
+
+check_resources() {
+
+    printf '\n'
+    printf '%s\n' "=============================="
+    printf '%s\n' "RESOURCES"
+    printf '%s\n' "=============================="
+
+
+    local memory_available
+    local memory_total
+    local memory_percentage
+    local disk_usage
+
+
+    memory_available=$(free | awk '/Mem:/ {print $7}')
+
+    memory_total=$(free | awk '/Mem:/ {print $2}')
+
+
+    if [[ "$memory_total" -gt 0 ]]; then
+
+        memory_percentage=$((memory_available * 100 / memory_total))
+
+        printf '  %-30s : %s%%\n' \
+            "Available Memory" \
+            "$memory_percentage"
+
+        if (( memory_percentage < 10 )); then
+
+            check_fail "Memory availability"
+
+            add_critical "Available memory is below 10%"
+
+        elif (( memory_percentage < 20 )); then
+
+            check_warn "Memory availability"
+
+            add_warning "Available memory is below 20%"
+
+        else
+
+            check_pass "Memory availability"
+
+        fi
+
+    fi
+
+
+    disk_usage=$(df / | awk 'NR==2 {gsub("%",""); print $5}')
+
+    printf '  %-30s : %s%%\n' "Root Disk Usage" "$disk_usage"
+
+
+    if (( disk_usage >= 90 )); then
+
+        check_fail "Disk usage"
+
+        add_critical "Root disk usage is ${disk_usage}%"
+
+    elif (( disk_usage >= 80 )); then
+
+        check_warn "Disk usage"
+
+        add_warning "Root disk usage is ${disk_usage}%"
+
+    else
+
+        check_pass "Disk usage"
+
+    fi
+
+
+    if swapon --show --noheadings 2>/dev/null | grep -q .; then
+
+        check_pass "Swap"
+
+    else
+
+        check_warn "Swap"
+
+        add_warning "No active swap detected"
+
+    fi
+
+}
+
+
+#################
+# Service Checks
+#################
 
 verify_services() {
 
-    echo
-    echo "=============================="
-    echo "SERVICES"
-    echo "=============================="
+    printf '\n'
+    printf '%s\n' "=============================="
+    printf '%s\n' "SERVICES"
+    printf '%s\n' "=============================="
 
-    check_service ssh
 
-    if command -v docker >/dev/null; then
-        check_service docker
+    local ssh_service
+
+
+    if ssh_service=$(detect_ssh_service); then
+
+        check_service "$ssh_service" true
+
+    else
+
+        check_fail "SSH service"
+
+        add_critical "Unable to determine SSH service"
+
     fi
 
-    if systemctl list-unit-files | grep -q nginx.service; then
-        check_service nginx
+
+    if systemctl list-unit-files nginx.service >/dev/null 2>&1; then
+
+        check_service nginx true
+
+    else
+
+        check_warn "Nginx service"
+
+        add_warning "Nginx is not installed"
+
     fi
 
-    if command -v tailscale >/dev/null; then
-        check_service tailscaled
+
+    if systemctl list-unit-files docker.service >/dev/null 2>&1; then
+
+        check_service docker true
+
+    else
+
+        check_warn "Docker service"
+
+        add_warning "Docker is not installed"
+
     fi
+
+
+    if systemctl list-unit-files fail2ban.service >/dev/null 2>&1; then
+
+        check_service fail2ban true
+
+    else
+
+        check_warn "Fail2Ban service"
+
+        add_warning "Fail2Ban is not installed"
+
+    fi
+
+
+    if systemctl list-unit-files auditd.service >/dev/null 2>&1; then
+
+        check_service auditd true
+
+    else
+
+        check_warn "Auditd service"
+
+        add_warning "Auditd is not installed"
+
+    fi
+
+
+    if systemctl list-unit-files unattended-upgrades.service >/dev/null 2>&1; then
+
+        check_service unattended-upgrades false
+
+    else
+
+        check_warn "Automatic updates"
+
+        add_warning "Unattended upgrades are not installed"
+
+    fi
+
 }
 
-#############
-# Disk Usage
-#############
 
-check_disk_usage() {
-
-    local usage
-
-    usage=$(df / | awk 'NR==2 {gsub("%",""); print $5}')
-
-    if (( usage >= 90 )); then
-
-        add_critical "Disk usage is ${usage}%"
-
-    elif (( usage >= 80 )); then
-
-        add_warning "Disk usage is ${usage}%"
-
-    fi
-
-}
-
-###############
-# Memory Check
-###############
-
-check_memory() {
-
-    local available
-
-    available=$(free | awk '/Mem:/ {print int($7/$2*100)}')
-
-    if (( available < 10 )); then
-
-        add_critical "Available memory below 10%"
-
-    elif (( available < 20 )); then
-
-        add_warning "Available memory below 20%"
-
-    fi
-
-}
-
-
-###########
-# Firewall
-###########
+#################
+# Firewall Check
+#################
 
 verify_firewall() {
 
-    echo
-    echo "=============================="
-    echo "FIREWALL"
-    echo "=============================="
+    printf '\n'
+    printf '%s\n' "=============================="
+    printf '%s\n' "FIREWALL"
+    printf '%s\n' "=============================="
 
-    if command -v ufw >/dev/null; then
-        ufw status
-    else
-        warn "UFW not installed."
+
+    if ! command -v ufw >/dev/null 2>&1; then
+
+        check_fail "UFW"
+
+        add_critical "UFW is not installed"
+
+        return
+
     fi
+
+
+    if ufw status | grep -q "Status: active"; then
+
+        check_pass "UFW firewall"
+
+        ufw status verbose
+
+    else
+
+        check_fail "UFW firewall"
+
+        add_critical "UFW firewall is inactive"
+
+        ufw status verbose || true
+
+    fi
+
 }
+
+
+############
+# SSH Check
+############
+
+verify_ssh_configuration() {
+
+    printf '\n'
+    printf '%s\n' "=============================="
+    printf '%s\n' "SSH CONFIGURATION"
+    printf '%s\n' "=============================="
+
+
+    if ! command -v sshd >/dev/null 2>&1; then
+
+        check_fail "sshd configuration"
+
+        add_critical "sshd command is not available"
+
+        return
+
+    fi
+
+
+    if sshd -t; then
+
+        check_pass "SSH configuration"
+
+    else
+
+        check_fail "SSH configuration"
+
+        add_critical "SSH configuration validation failed"
+
+    fi
+
+}
+
 
 #########
 # Docker
@@ -245,20 +511,74 @@ verify_firewall() {
 
 verify_docker() {
 
-    if ! command -v docker >/dev/null; then
+    printf '\n'
+    printf '%s\n' "=============================="
+    printf '%s\n' "DOCKER"
+    printf '%s\n' "=============================="
+
+
+    if ! command -v docker >/dev/null 2>&1; then
+
+        check_warn "Docker"
+
+        add_warning "Docker is not installed"
+
         return
+
     fi
 
-    echo
-    echo "=============================="
-    echo "DOCKER"
-    echo "=============================="
 
-    docker ps
+    if docker info >/dev/null 2>&1; then
 
-    echo
-    docker system df
+        check_pass "Docker daemon"
+
+    else
+
+        check_fail "Docker daemon"
+
+        add_critical "Docker daemon is unavailable"
+
+        return
+
+    fi
+
+
+    printf '  %-30s : %s\n' \
+        "Docker Version" \
+        "$(docker --version)"
+
+
+    if docker compose version >/dev/null 2>&1; then
+
+        check_pass "Docker Compose"
+
+    else
+
+        check_warn "Docker Compose"
+
+        add_warning "Docker Compose plugin is unavailable"
+
+    fi
+
+
+    if docker buildx version >/dev/null 2>&1; then
+
+        check_pass "Docker Buildx"
+
+    else
+
+        check_warn "Docker Buildx"
+
+        add_warning "Docker Buildx is unavailable"
+
+    fi
+
+
+    printf '\n'
+    docker system df || true
+
 }
+
 
 ##########
 # Network
@@ -266,39 +586,115 @@ verify_docker() {
 
 verify_network() {
 
-    echo
-    echo "=============================="
-    echo "LISTENING PORTS"
-    echo "=============================="
-
-    ss -tulpn
-}
-
-##################
-# Failed Services
-##################
+    printf '\n'
+    printf '%s\n' "=============================="
+    printf '%s\n' "NETWORK"
+    printf '%s\n' "=============================="
 
 
-verify_failed_services() {
+    if ! command -v ip >/dev/null 2>&1; then
 
-    echo
-    echo "=============================="
-    echo "FAILED SYSTEMD UNITS"
-    echo "=============================="
+        check_warn "Network tools"
 
-    local failed
+        add_warning "ip command is unavailable"
 
-    failed=$(systemctl --failed --no-legend | wc -l)
+    else
 
-    if (( failed > 0 )); then
-
-        add_warning "${failed} failed systemd unit(s) detected"
+        check_pass "Network tools"
 
     fi
 
-    systemctl --failed --no-pager
+
+    if command -v ping >/dev/null 2>&1; then
+
+        if ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1; then
+
+            check_pass "Internet connectivity"
+
+        else
+
+            check_fail "Internet connectivity"
+
+            add_critical "Unable to reach external network"
+
+        fi
+
+    else
+
+        check_warn "Internet connectivity"
+
+        add_warning "ping command is unavailable"
+
+    fi
+
+
+    if getent hosts github.com >/dev/null 2>&1; then
+
+        check_pass "DNS resolution"
+
+    else
+
+        check_fail "DNS resolution"
+
+        add_critical "DNS resolution failed"
+
+    fi
+
+
+    if command -v ss >/dev/null 2>&1; then
+
+        printf '\n'
+        printf '%s\n' "Listening Ports"
+        printf '%s\n' "------------------------------"
+
+        ss -tulpn
+
+    else
+
+        check_warn "Listening ports"
+
+        add_warning "ss command is unavailable"
+
+    fi
 
 }
+
+
+#######################
+# Failed Systemd Units
+#######################
+
+verify_failed_services() {
+
+    printf '\n'
+    printf '%s\n' "=============================="
+    printf '%s\n' "FAILED SYSTEMD UNITS"
+    printf '%s\n' "=============================="
+
+
+    local failed
+
+    failed=$(systemctl --failed --no-legend 2>/dev/null | wc -l)
+
+
+    if (( failed > 0 )); then
+
+        check_warn "Failed systemd units"
+
+        add_warning "${failed} failed systemd unit(s) detected"
+
+        systemctl --failed --no-pager
+
+    else
+
+        check_pass "Failed systemd units"
+
+        printf '  No failed systemd units detected.\n'
+
+    fi
+
+}
+
 
 ################
 # Recent Errors
@@ -306,14 +702,46 @@ verify_failed_services() {
 
 verify_logs() {
 
-    echo
-    echo "=============================="
-    echo "RECENT SYSTEM ERRORS"
-    echo "=============================="
+    printf '\n'
+    printf '%s\n' "=============================="
+    printf '%s\n' "RECENT SYSTEM ERRORS"
+    printf '%s\n' "=============================="
 
-    journalctl -p err -n 20 --no-pager
+
+    if ! command -v journalctl >/dev/null 2>&1; then
+
+        check_warn "System journal"
+
+        add_warning "journalctl is unavailable"
+
+        return
+
+    fi
+
+
+    local errors
+
+    errors=$(journalctl -p err -n 20 --no-pager 2>/dev/null || true)
+
+
+    if [[ -n "$errors" ]]; then
+
+        check_warn "Recent system errors"
+
+        printf '%s\n' "$errors"
+
+        add_warning "Recent system errors detected"
+
+    else
+
+        check_pass "Recent system errors"
+
+        printf '  No recent system errors detected.\n'
+
+    fi
 
 }
+
 
 #################
 # Health Summary
@@ -321,47 +749,70 @@ verify_logs() {
 
 health_summary() {
 
-    echo
-    echo "======================================="
-    echo "Health Summary"
-    echo "======================================="
+    printf '\n'
+    printf '%s\n' "======================================="
+    printf '%s\n' "HEALTH SUMMARY"
+    printf '%s\n' "======================================="
+
+
+    printf '\n'
+    printf 'Critical issues : %d\n' "${#CRITICALS[@]}"
+    printf 'Warnings        : %d\n' "${#WARNINGS[@]}"
+
 
     if ((${#CRITICALS[@]})); then
 
-        echo
-        echo "Critical Issues:"
+        printf '\n'
+        printf 'Critical Issues:\n'
 
         printf '  - %s\n' "${CRITICALS[@]}"
 
     fi
 
+
     if ((${#WARNINGS[@]})); then
 
-        echo
-        echo "Warnings:"
+        printf '\n'
+        printf 'Warnings:\n'
 
         printf '  - %s\n' "${WARNINGS[@]}"
 
     fi
 
-    echo
+
+    printf '\n'
+
 
     case "$EXIT_CODE" in
+
         0)
-            echo "Overall Status : HEALTHY"
+
+            success "Overall Status: HEALTHY"
+
             ;;
+
+
         1)
-            echo "Overall Status : HEALTHY WITH WARNINGS"
+
+            warn "Overall Status: HEALTHY WITH WARNINGS"
+
             ;;
+
+
         2)
-            echo "Overall Status : CRITICAL"
+
+            error "Overall Status: CRITICAL"
+
             ;;
+
     esac
+
 }
 
-#######
+
+########
 # Main
-#######
+########
 
 main() {
 
@@ -371,6 +822,7 @@ main() {
 
             show_help
             exit 0
+
             ;;
 
 
@@ -378,6 +830,7 @@ main() {
 
             show_version
             exit 0
+
             ;;
 
 
@@ -390,24 +843,37 @@ main() {
 
             error "Unknown option: $1"
 
-            echo
+            printf '\n'
 
             show_help
 
             exit 1
+
             ;;
 
     esac
 
-    info "Running VPS verification..."
+
+    printf '\n'
+
+    info "Starting TANTO VPS verification..."
+
+
+    require_command systemctl
+    require_command free
+    require_command df
+    require_command swapon
+    require_command hostname
+    require_command uname
+
 
     system_information
 
+    check_resources
+
     verify_services
 
-    check_disk_usage
-
-    check_memory
+    verify_ssh_configuration
 
     verify_firewall
 
@@ -421,10 +887,25 @@ main() {
 
     health_summary
 
-    info "Verification completed."
+
+    if [[ "$EXIT_CODE" -eq 0 ]]; then
+
+        success "VPS verification completed successfully."
+
+    elif [[ "$EXIT_CODE" -eq 1 ]]; then
+
+        warn "VPS verification completed with warnings."
+
+    else
+
+        error "VPS verification detected critical issues."
+
+    fi
+
 
     exit "$EXIT_CODE"
 
 }
+
 
 main "$@"
