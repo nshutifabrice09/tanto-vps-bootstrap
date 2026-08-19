@@ -136,14 +136,57 @@ run_module() {
 
 }
 
+###################
+# Module Execution
+###################
+
+run_module() {
+
+    local module="$1"
+    local script="${MODULE_DIR}/${module}.sh"
+    local start_time
+    local end_time
+    local duration
+    local status
+
+    check_module "$module"
+
+    info "Starting ${module}.sh..."
+
+    start_time=$(date +%s)
+
+    if bash "$script"; then
+
+        status=0
+
+    else
+
+        status=$?
+
+    fi
+
+    end_time=$(date +%s)
+    duration=$((end_time - start_time))
+
+    if [[ "$status" -eq 0 ]]; then
+
+        success "${module}.sh completed successfully in ${duration}s."
+
+    else
+
+        error "${module}.sh failed with exit code ${status} after ${duration}s."
+
+    fi
+
+    return "$status"
+
+}
 
 ####################
 # FULL INSTALLATION
 ####################
 
 run_full_installation() {
-
-    info "Starting full VPS bootstrap..."
 
     local modules=(
         system
@@ -155,16 +198,59 @@ run_full_installation() {
         verify
     )
 
+    local module
+    local failed=0
+
+    info "Starting full VPS bootstrap..."
+    printf '\n'
+
     for module in "${modules[@]}"; do
 
-        run_module "$module"
+        printf '%s\n' "----------------------------------------"
+        info "Module: ${module}"
+        printf '%s\n' "----------------------------------------"
+
+        if run_module "$module"; then
+
+            :
+
+        else
+
+            failed=$((failed + 1))
+
+            error "Module '${module}' failed."
+
+            if [[ "$module" != "verify" ]]; then
+
+                error "Stopping full bootstrap."
+
+                return 1
+
+            fi
+
+        fi
+
+        printf '\n'
 
     done
 
-    info "Full VPS bootstrap completed successfully."
+    printf '%s\n' "========================================"
+    printf '%s\n' " TANTO VPS Bootstrap Summary"
+    printf '%s\n' "========================================"
+
+    if [[ "$failed" -eq 0 ]]; then
+
+        success "Full VPS bootstrap completed successfully."
+
+        return 0
+
+    fi
+
+    warn "Bootstrap completed with ${failed} module issue(s)."
+
+    return 1
 
 }
-
 
 #############
 # ARGUMENTS
