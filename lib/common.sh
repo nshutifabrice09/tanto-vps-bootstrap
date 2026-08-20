@@ -60,3 +60,31 @@ require_command() {
     fi
 
 }
+
+#######################
+# Configuration Loader
+#######################
+
+load_config() {
+
+    local config_file="${1:-}"
+
+    if [[ -z "$config_file" ]]; then
+        error "Configuration file path was not provided."
+        return 1
+    fi
+
+    if [[ ! -f "$config_file" ]]; then
+        error "Configuration file not found: ${config_file}"
+        return 1
+    fi
+
+    if [[ ! -r "$config_file" ]]; then
+        error "Configuration file is not readable: ${config_file}"
+        return 1
+    fi
+
+    # shellcheck disable=SC1090
+    source "$config_file"
+
+}
