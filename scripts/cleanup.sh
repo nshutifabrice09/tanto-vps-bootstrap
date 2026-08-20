@@ -6,15 +6,9 @@ source "$(dirname "$0")/../lib/common.sh"
 
 VERSION="1.0.0"
 
-################
-# Configuration
-################
+CONFIG_FILE="$(dirname "$0")/../config/defaults.conf"
 
-JOURNAL_RETENTION="${JOURNAL_RETENTION:-14d}"
-TEMP_RETENTION_DAYS="${TEMP_RETENTION_DAYS:-3}"
-DOCKER_RETENTION_DAYS="${DOCKER_RETENTION_DAYS:-7}"
-
-DRY_RUN=false
+load_config "$CONFIG_FILE"
 
 #######
 # Help

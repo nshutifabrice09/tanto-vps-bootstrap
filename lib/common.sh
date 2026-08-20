@@ -86,5 +86,4 @@ load_config() {
 
     # shellcheck disable=SC1090
     source "$config_file"
-
 }
