@@ -11,6 +11,10 @@ VERSION="1.0.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODULE_DIR="${SCRIPT_DIR}/scripts"
 
+CONFIG_FILE="${SCRIPT_DIR}/config/defaults.conf"
+
+load_config "$CONFIG_FILE"
+
 # Load shared functions
 source "${SCRIPT_DIR}/lib/common.sh"
 
