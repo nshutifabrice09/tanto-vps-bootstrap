@@ -75,34 +75,10 @@ check_existing_swap() {
 
 determine_swap_size() {
 
-    # Allow the user to specify a custom swap size.
-    if [[ $# -ge 1 ]]; then
-        SWAP_SIZE="$1"
+    SWAP_SIZE="${SWAP_SIZE_GB}G"
 
-        info "Using user-defined swap size: ${SWAP_SIZE}"
+    info "Configured swap size: ${SWAP_SIZE}"
 
-        return
-    fi
-
-    local total_ram_mb
-
-    total_ram_mb=$(free -m | awk '/^Mem:/ {print $2}')
-
-    if (( total_ram_mb <= 2048 )); then
-        SWAP_SIZE="2G"
-
-    elif (( total_ram_mb <= 4096 )); then
-        SWAP_SIZE="4G"
-
-    elif (( total_ram_mb <= 8192 )); then
-        SWAP_SIZE="4G"
-
-    else
-        SWAP_SIZE="8G"
-    fi
-
-    info "Detected RAM: ${total_ram_mb} MB"
-    info "Automatically selected swap size: ${SWAP_SIZE}"
 }
 
 create_swap_file() {
