@@ -44,13 +44,47 @@ EOF
 
 }
 
-#########
+##########
 # Version
-#########
+##########
 
 show_version() {
 
     echo "Swap Configuration Module v${VERSION}"
+
+}
+
+###########################
+# Configuration Validation
+###########################
+
+validate_configuration() {
+
+    if ! [[ "${SWAP_SIZE_GB}" =~ ^[1-9][0-9]*$ ]]; then
+
+        error "SWAP_SIZE_GB must be a positive integer."
+
+        return 1
+
+    fi
+
+    if ! [[ "${VM_SWAPPINESS}" =~ ^[0-9]+$ ]] ||
+       (( VM_SWAPPINESS < 0 || VM_SWAPPINESS > 100 )); then
+
+        error "VM_SWAPPINESS must be between 0 and 100."
+
+        return 1
+
+    fi
+
+    if ! [[ "${VM_VFS_CACHE_PRESSURE}" =~ ^[0-9]+$ ]] ||
+       (( VM_VFS_CACHE_PRESSURE < 0 )); then
+
+        error "VM_VFS_CACHE_PRESSURE must be a non-negative integer."
+
+        return 1
+
+    fi
 
 }
 
@@ -165,9 +199,9 @@ verify_swap_configuration() {
 }
 
 
-########
+#######
 # Main
-########
+#######
 
 main() {
 
@@ -201,7 +235,8 @@ main() {
 
 
     require_root
-
+    
+    validation_configuration
 
     info "Starting swap configuration..."
 
