@@ -98,13 +98,13 @@ validate_configuration() {
 
 check_existing_swap() {
 
-    if swapon --show | grep -q "/"; then
+    if swapon --show --noheadings | grep -q .; then
 
         info "Swap is already configured."
 
         swapon --show
 
-        exit 0
+        return 0
 
     fi
 

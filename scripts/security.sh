@@ -8,6 +8,7 @@ VERSION="1.0.0"
 
 LOG_FILE="/var/log/gc-vps-bootstrap-security.log"
 
+load_config "$CONFIG_FILE"
 
 ##########
 # Logging
