@@ -6,7 +6,9 @@ source "$(dirname "$0")/../lib/common.sh"
 
 VERSION="1.0.0"
 
-LOG_FILE="/var/log/gc-vps-bootstrap-security.log"
+CONFIG_FILE="$(dirname "$0")/../config/defaults.conf"
+
+LOG_FILE="${SECURITY_LOG_FILE}"
 
 load_config "$CONFIG_FILE"
 
