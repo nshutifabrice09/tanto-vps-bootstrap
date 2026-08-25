@@ -84,7 +84,6 @@ show_version() {
 # Validate Configuration
 #########################
 validate_configuration() {
-
     case "$SSH_PERMIT_ROOT_LOGIN" in
         yes|no) ;;
         *)
@@ -113,7 +112,6 @@ validate_configuration() {
         error "FAIL2BAN_MAXRETRY must be a positive integer."
         return 1
     fi
-
 }
 
 ##############
