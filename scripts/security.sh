@@ -8,9 +8,9 @@ VERSION="1.0.0"
 
 CONFIG_FILE="$(dirname "$0")/../config/defaults.conf"
 
-LOG_FILE="${SECURITY_LOG_FILE}"
-
 load_config "$CONFIG_FILE"
+
+LOG_FILE="${SECURITY_LOG_FILE}"
 
 ##########
 # Logging
@@ -80,6 +80,41 @@ show_version() {
 
 }
 
+#########################
+# Validate Configuration
+#########################
+validate_configuration() {
+
+    case "$SSH_PERMIT_ROOT_LOGIN" in
+        yes|no) ;;
+        *)
+            error "SSH_PERMIT_ROOT_LOGIN must be 'yes' or 'no'."
+            return 1
+            ;;
+    esac
+
+    case "$SSH_PASSWORD_AUTHENTICATION" in
+        yes|no) ;;
+        *)
+            error "SSH_PASSWORD_AUTHENTICATION must be 'yes' or 'no'."
+            return 1
+            ;;
+    esac
+
+    case "$SSH_X11_FORWARDING" in
+        yes|no) ;;
+        *)
+            error "SSH_X11_FORWARDING must be 'yes' or 'no'."
+            return 1
+            ;;
+    esac
+
+    if ! [[ "$FAIL2BAN_MAXRETRY" =~ ^[1-9][0-9]*$ ]]; then
+        error "FAIL2BAN_MAXRETRY must be a positive integer."
+        return 1
+    fi
+
+}
 
 ##############
 # Backup File
@@ -197,14 +232,14 @@ configure_fail2ban() {
 
     require_command systemctl
 
-    cat > /etc/fail2ban/jail.local <<'EOF'
-[DEFAULT]
-bantime = 1h
-findtime = 10m
-maxretry = 5
+    cat > /etc/fail2ban/jail.local <<EOF
+    [DEFAULT]
+    bantime = ${FAIL2BAN_BANTIME}
+    findtime = ${FAIL2BAN_FINDTIME}
+    maxretry = ${FAIL2BAN_MAXRETRY}
 
-[sshd]
-enabled = true
+    [sshd]
+    enabled = true
 EOF
 
     run_command systemctl enable fail2ban
@@ -262,35 +297,35 @@ harden_ssh() {
     backup_file "$ssh_config"
 
     sed -i \
-        's/^#\?PermitRootLogin.*/PermitRootLogin no/' \
+        "s/^#\?PermitRootLogin.*/PermitRootLogin ${SSH_PERMIT_ROOT_LOGIN}/" \
         "$ssh_config"
 
     sed -i \
-        's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' \
+        "s/^#\?PasswordAuthentication.*/PasswordAuthentication ${SSH_PASSWORD_AUTHENTICATION}/" \
         "$ssh_config"
 
     sed -i \
-        's/^#\?X11Forwarding.*/X11Forwarding no/' \
+        "s/^#\?X11Forwarding.*/X11Forwarding ${SSH_X11_FORWARDING}/" \
         "$ssh_config"
 
 
     if ! grep -q '^PermitRootLogin' "$ssh_config"; then
 
-        echo "PermitRootLogin no" >> "$ssh_config"
+        echo "PermitRootLogin ${SSH_PERMIT_ROOT_LOGIN}" >> "$ssh_config"
 
     fi
 
 
     if ! grep -q '^PasswordAuthentication' "$ssh_config"; then
 
-        echo "PasswordAuthentication no" >> "$ssh_config"
+        echo "PasswordAuthentication ${SSH_PASSWORD_AUTHENTICATION}" >> "$ssh_config"
 
     fi
 
 
     if ! grep -q '^X11Forwarding' "$ssh_config"; then
 
-        echo "X11Forwarding no" >> "$ssh_config"
+        echo "X11Forwarding ${SSH_X11_FORWARDING}" >> "$ssh_config"
 
     fi
 
@@ -381,6 +416,8 @@ main() {
     esac
 
     require_root
+
+    validate_configuration
 
     initialize_logging
 
