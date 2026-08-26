@@ -55,6 +55,21 @@ show_version() {
 
 }
 
+########################
+#Validate Configuration
+########################
+validate_configuration() {
+
+    if ! timedatectl list-timezones | grep -qx "$TIMEZONE"; then
+
+        error "Invalid timezone configured: ${TIMEZONE}"
+
+        return 1
+
+    fi
+
+}
+
 ################
 # Update System
 ################
@@ -180,6 +195,8 @@ main() {
     esac
 
     require_root
+
+    validate_configuration
 
     info "Starting system bootstrap..."
 
