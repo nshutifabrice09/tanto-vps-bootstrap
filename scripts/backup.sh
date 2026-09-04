@@ -65,7 +65,10 @@ TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 
 BACKUP_FILE="server-backup-${TIMESTAMP}.tar.gz"
 
-RETENTION_DAYS="${BACKUP_RETENTION_DAYS}"
+find "$BACKUP_DIR" \
+    -type f \
+    -mtime +"${BACKUP_RETENTION_DAYS}" \
+    -delete
 
 JOURNAL_RETENTION="14d"
 
@@ -185,11 +188,11 @@ backup_databases() {
 
 cleanup_old_backups() {
 
-    info "Removing backups older than ${RETENTION_DAYS} days..."
+    info "Removing backups older than ${BACKUP_RETENTION_DAYS} days..."
 
     find "$BACKUP_DIR" \
         -type f \
-        -mtime +"${RETENTION_DAYS}" \
+        -mtime +"${BACKUP_RETENTION_DAYS}" \
         -delete
 
 }
