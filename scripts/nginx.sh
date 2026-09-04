@@ -133,13 +133,13 @@ configure_nginx() {
 
     info "Nginx configuration backup created: ${backup_file}"
 
-    cat > "$config_file" <<'EOF'
+cat > "$config_file" <<'EOF'
 user www-data;
 worker_processes auto;
 pid /run/nginx.pid;
 
 events {
-    worker_connections 4096;
+    worker_connections ${NGINX_WORKER_CONNECTIONS};
     multi_accept on;
 }
 
@@ -149,7 +149,7 @@ http {
     tcp_nopush on;
     tcp_nodelay on;
 
-    keepalive_timeout 65;
+    keepalive_timeout ${NGINX_KEEPALIVE_TIMEOUT};
 
     server_tokens off;
 
@@ -159,8 +159,8 @@ http {
     default_type application/octet-stream;
 
     gzip on;
-    gzip_comp_level 5;
-    gzip_min_length 256;
+    gzip_comp_level ${NGINX_GZIP_COMP_LEVEL};
+    gzip_min_length ${NGINX_GZIP_MIN_LENGTH};
 
     gzip_types
         text/plain
@@ -170,7 +170,7 @@ http {
         application/xml
         image/svg+xml;
 
-    client_max_body_size 100M;
+    client_max_body_size ${NGINX_CLIENT_MAX_BODY_SIZE};
 
     add_header X-Frame-Options SAMEORIGIN always;
     add_header X-Content-Type-Options nosniff always;
