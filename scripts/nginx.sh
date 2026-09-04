@@ -6,6 +6,9 @@ source "$(dirname "$0")/../lib/common.sh"
 
 VERSION="1.0.0"
 
+CONFIG_FILE="$(dirname "$0")/../config/defaults.conf"
+
+loaf_config "$CONFIG_FILE"
 
 #######
 # Help

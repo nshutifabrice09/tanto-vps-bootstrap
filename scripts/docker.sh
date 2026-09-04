@@ -247,13 +247,10 @@ configure_docker_daemon() {
 {
     "log-driver": "json-file",
     "log-opts": {
-        "max-size": "10m",
-        "max-file": "5"
+        "max-size": "${DOCKER_LOG_MAX_SIZE}",
+        "max-file": "${DOCKER_LOG_MAX_FILES}"
     },
-    "live-restore": true,
-    "features": {
-        "buildkit": true
-    }
+    "live-restore": ${DOCKER_LIVE_RESTORE}
 }
 EOF
 
