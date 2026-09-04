@@ -6,6 +6,10 @@ source "$(dirname "$0")/../lib/common.sh"
 
 VERSION="1.0.0"
 
+CONFIG_FILE="$(dirname "$0")/../config/defaults.conf"
+
+load_config "$CONFIG_FILE"
+
 #######
 # Help
 #######
@@ -61,8 +65,20 @@ TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 
 BACKUP_FILE="server-backup-${TIMESTAMP}.tar.gz"
 
-RETENTION_DAYS=14
+RETENTION_DAYS="${BACKUP_RETENTION_DAYS}"
 
+JOURNAL_RETENTION="14d"
+
+#########################
+# Validate Configuration
+#########################
+
+validate_configuration() {
+    if ! [[ "${BACKUP_RETENTION_DAYS}" =~ ^[0-9]+$ ]]; then
+        error "BACKUP_RETENTION_DAYS must be a non-negative integer."
+        return 1
+    fi
+}
 
 ###########################
 # Prepare Backup Directory
@@ -221,6 +237,8 @@ main() {
     esac
 
     require_root
+
+    validate_configuration
 
     info "Starting backup process..."
 
