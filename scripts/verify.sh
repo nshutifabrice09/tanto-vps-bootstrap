@@ -6,6 +6,10 @@ source "$(dirname "$0")/../lib/common.sh"
 
 VERSION="1.1.0"
 
+CONFIG_FILE="$(dirname "$0")/../config/defaults.conf"
+
+load_config "$CONFIG_FILE"
+
 ################
 # Health Status
 ################
@@ -270,17 +274,17 @@ check_resources() {
             "Available Memory" \
             "$memory_percentage"
 
-        if (( memory_percentage < 10 )); then
+        if (( memory_percentage < MEMORY_CRITICAL_THRESHOLD )); then
 
             check_fail "Memory availability"
 
-            add_critical "Available memory is below 10%"
+            add_critical "Available memory is below ${MEMORY_CRITICAL_THRESHOLD}%"
 
-        elif (( memory_percentage < 20 )); then
+        elif (( memory_percentage < MEMORY_WARNING_THRESHOLD )); then
 
             check_warn "Memory availability"
 
-            add_warning "Available memory is below 20%"
+            add_warning "Available memory is below ${MEMORY_WARNING_THRESHOLD}%"
 
         else
 
@@ -296,13 +300,13 @@ check_resources() {
     printf '  %-30s : %s%%\n' "Root Disk Usage" "$disk_usage"
 
 
-    if (( disk_usage >= 90 )); then
+    if (( disk_usage >= DISK_CRITICAL_THRESHOLD )); then
 
         check_fail "Disk usage"
 
         add_critical "Root disk usage is ${disk_usage}%"
 
-    elif (( disk_usage >= 80 )); then
+    elif (( disk_usage >= DISK_WARNING_THRESHOLD )); then
 
         check_warn "Disk usage"
 
@@ -865,7 +869,13 @@ main() {
     require_command swapon
     require_command hostname
     require_command uname
-
+    if ! [[ "${MEMORY_WARNING_THRESHOLD}" =~ ^[0-9]+$ ]] ||
+    ! [[ "${MEMORY_CRITICAL_THRESHOLD}" =~ ^[0-9]+$ ]] ||
+    ! [[ "${DISK_WARNING_THRESHOLD}" =~ ^[0-9]+$ ]] ||
+    ! [[ "${DISK_CRITICAL_THRESHOLD}" =~ ^[0-9]+$ ]]; then
+        error "Health check thresholds must be non-negative integers."
+        exit 1
+    fi
 
     system_information
 
