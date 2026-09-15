@@ -15,6 +15,8 @@ CONFIG_FILE="${SCRIPT_DIR}/config/defaults.conf"
 
 load_config "$CONFIG_FILE"
 
+validate_config
+
 # Load shared functions
 source "${SCRIPT_DIR}/lib/common.sh"
 
