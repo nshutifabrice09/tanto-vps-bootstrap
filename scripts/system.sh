@@ -79,7 +79,7 @@ install_packages() {
 
     info "Installing essential packages..."
 
-    apt-get install -y \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
         apt-transport-https \
         ca-certificates \
         curl \

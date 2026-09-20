@@ -80,40 +80,6 @@ show_version() {
 
 }
 
-#########################
-# Validate Configuration
-#########################
-validate_configuration() {
-    case "$SSH_PERMIT_ROOT_LOGIN" in
-        yes|no) ;;
-        *)
-            error "SSH_PERMIT_ROOT_LOGIN must be 'yes' or 'no'."
-            return 1
-            ;;
-    esac
-
-    case "$SSH_PASSWORD_AUTHENTICATION" in
-        yes|no) ;;
-        *)
-            error "SSH_PASSWORD_AUTHENTICATION must be 'yes' or 'no'."
-            return 1
-            ;;
-    esac
-
-    case "$SSH_X11_FORWARDING" in
-        yes|no) ;;
-        *)
-            error "SSH_X11_FORWARDING must be 'yes' or 'no'."
-            return 1
-            ;;
-    esac
-
-    if ! [[ "$FAIL2BAN_MAXRETRY" =~ ^[1-9][0-9]*$ ]]; then
-        error "FAIL2BAN_MAXRETRY must be a positive integer."
-        return 1
-    fi
-}
-
 ##############
 # Backup File
 ##############
@@ -415,7 +381,7 @@ main() {
 
     require_root
 
-    validate_configuration
+    # validate_configuration
 
     initialize_logging
 
