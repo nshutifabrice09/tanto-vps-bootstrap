@@ -237,9 +237,9 @@ configure_auditd() {
 #############
 
 harden_ssh() {
-
     local ssh_service
     local ssh_config="/etc/ssh/sshd_config"
+    local ssh_config_changed=false
 
     ssh_service="$(detect_ssh_service)"
 
@@ -251,59 +251,67 @@ harden_ssh() {
     require_command systemctl
 
     if [[ ! -f "$ssh_config" ]]; then
-
         error "SSH configuration file not found: ${ssh_config}"
-
-        exit 1
-
+        return 1
     fi
 
-    backup_file "$ssh_config"
+    # Determine whether the requested SSH settings differ
+    # from the current configuration.
+    if ! grep -Eq \
+        "^[[:space:]]*PermitRootLogin[[:space:]]+${SSH_PERMIT_ROOT_LOGIN}[[:space:]]*$" \
+        "$ssh_config" ||
+       ! grep -Eq \
+        "^[[:space:]]*PasswordAuthentication[[:space:]]+${SSH_PASSWORD_AUTHENTICATION}[[:space:]]*$" \
+        "$ssh_config" ||
+       ! grep -Eq \
+        "^[[:space:]]*X11Forwarding[[:space:]]+${SSH_X11_FORWARDING}[[:space:]]*$" \
+        "$ssh_config"; then
 
-    sed -i \
-        "s/^#\?PermitRootLogin.*/PermitRootLogin ${SSH_PERMIT_ROOT_LOGIN}/" \
-        "$ssh_config"
-
-    sed -i \
-        "s/^#\?PasswordAuthentication.*/PasswordAuthentication ${SSH_PASSWORD_AUTHENTICATION}/" \
-        "$ssh_config"
-
-    sed -i \
-        "s/^#\?X11Forwarding.*/X11Forwarding ${SSH_X11_FORWARDING}/" \
-        "$ssh_config"
-
-
-    if ! grep -q '^PermitRootLogin' "$ssh_config"; then
-
-        echo "PermitRootLogin ${SSH_PERMIT_ROOT_LOGIN}" >> "$ssh_config"
-
+        ssh_config_changed=true
     fi
 
+    # Only create a backup when the configuration actually
+    # needs to change.
+    if [[ "$ssh_config_changed" == true ]]; then
+        backup_file "$ssh_config"
 
-    if ! grep -q '^PasswordAuthentication' "$ssh_config"; then
+        sed -i \
+            "s/^#\?PermitRootLogin.*/PermitRootLogin ${SSH_PERMIT_ROOT_LOGIN}/" \
+            "$ssh_config"
 
-        echo "PasswordAuthentication ${SSH_PASSWORD_AUTHENTICATION}" >> "$ssh_config"
+        sed -i \
+            "s/^#\?PasswordAuthentication.*/PasswordAuthentication ${SSH_PASSWORD_AUTHENTICATION}/" \
+            "$ssh_config"
 
+        sed -i \
+            "s/^#\?X11Forwarding.*/X11Forwarding ${SSH_X11_FORWARDING}/" \
+            "$ssh_config"
+
+        # Add directives that do not already exist.
+        if ! grep -q '^PermitRootLogin' "$ssh_config"; then
+            echo "PermitRootLogin ${SSH_PERMIT_ROOT_LOGIN}" >> "$ssh_config"
+        fi
+
+        if ! grep -q '^PasswordAuthentication' "$ssh_config"; then
+            echo "PasswordAuthentication ${SSH_PASSWORD_AUTHENTICATION}" >> "$ssh_config"
+        fi
+
+        if ! grep -q '^X11Forwarding' "$ssh_config"; then
+            echo "X11Forwarding ${SSH_X11_FORWARDING}" >> "$ssh_config"
+        fi
+
+        log "Validating SSH configuration..."
+
+        run_command sshd -t
+
+        log "SSH configuration is valid."
+
+        run_command systemctl restart "$ssh_service"
+
+        log "SSH hardening completed."
+    else
+        log "SSH configuration already matches requested settings."
     fi
-
-
-    if ! grep -q '^X11Forwarding' "$ssh_config"; then
-
-        echo "X11Forwarding ${SSH_X11_FORWARDING}" >> "$ssh_config"
-
-    fi
-
-
-    log "Validating SSH configuration..."
-
-    run_command sshd -t
-
-    log "SSH configuration is valid."
-
-    run_command systemctl restart "$ssh_service"
-
-    log "SSH hardening completed."
-
 }
 
 
@@ -391,7 +399,7 @@ main() {
 
     run_command apt-get update
 
-    run_command apt-get install -y \
+    run_command env DEBIAN_FRONTEND=noninteractive apt-get install -y \
         ufw \
         fail2ban \
         auditd
