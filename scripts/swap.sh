@@ -2,50 +2,40 @@
 
 set -Eeuo pipefail
 
-source "$(dirname "$0")/../lib/common.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "${SCRIPT_DIR}")"
+
+source "${PROJECT_DIR}/lib/common.sh"
 
 VERSION="1.0.0"
+CONFIG_FILE="${PROJECT_DIR}/config/defaults.conf"
+SWAP_FILE="/swapfile"
+SYSCTL_FILE="/etc/sysctl.d/99-tanto-vps-bootstrap.conf"
+FSTAB_FILE="/etc/fstab"
 
-CONFIG_FILE="$(dirname "$0")/../config/defaults.conf"
+load_config "${CONFIG_FILE}"
 
-load_config "$CONFIG_FILE"
-
-#######
+########
 # Help
-#######
+########
 
 show_help() {
-
-cat <<EOF
+    cat <<EOF
 
 Swap Configuration Module
 
 Usage:
-
-sudo ./swap.sh [OPTION]
+  sudo ./install.sh --swap
 
 Options:
-
   --help, -h        Show this help message
   --version, -v     Show module version
 
 Description:
-
-  Creates and configures a Linux swap file by:
-
-    • Checking if swap already exists
-    • Creating a swap file
-    • Setting secure permissions
-    • Enabling swap
-    • Persisting configuration in /etc/fstab
-    • Optimizing vm.swappiness and vm.vfs_cache_pressure
-
-Example:
-
-  sudo ./swap.sh
+  Configures swap storage, persists its configuration,
+  and applies kernel memory parameters.
 
 EOF
-
 }
 
 ##########
@@ -53,138 +43,215 @@ EOF
 ##########
 
 show_version() {
-
-    echo "Swap Configuration Module v${VERSION}"
-
+    printf 'Swap Configuration Module v%s\n' "${VERSION}"
 }
 
-###########################
-# Configuration Validation
-###########################
+#################
+# Required Tools
+#################
 
-validate_configuration() {
+check_dependencies() {
+    local command_name
 
-    if ! [[ "${SWAP_SIZE_GB}" =~ ^[1-9][0-9]*$ ]]; then
-
-        error "SWAP_SIZE_GB must be a positive integer."
-
-        return 1
-
-    fi
-
-    if ! [[ "${VM_SWAPPINESS}" =~ ^[0-9]+$ ]] ||
-       (( VM_SWAPPINESS < 0 || VM_SWAPPINESS > 100 )); then
-
-        error "VM_SWAPPINESS must be between 0 and 100."
-
-        return 1
-
-    fi
-
-    if ! [[ "${VM_VFS_CACHE_PRESSURE}" =~ ^[0-9]+$ ]] ||
-       (( VM_VFS_CACHE_PRESSURE < 0 )); then
-
-        error "VM_VFS_CACHE_PRESSURE must be a non-negative integer."
-
-        return 1
-
-    fi
-
+    for command_name in \
+        awk \
+        cmp \
+        fallocate \
+        free \
+        grep \
+        chmod \
+        mkswap \
+        swapon \
+        swapoff \
+        sysctl \
+        truncate
+    do
+        require_command "${command_name}"
+    done
 }
 
-#############
-# Root Check
-#############
-
-check_existing_swap() {
-
-    if swapon --show --noheadings | grep -q .; then
-
-        info "Swap is already configured."
-
-        swapon --show
-
-        return 0
-
-    fi
-
-    info "No existing swap detected."
-}
+################
+# Swap Sizing
+################
 
 determine_swap_size() {
+    SWAP_SIZE_BYTES=$((SWAP_SIZE_GB * 1024 * 1024 * 1024))
 
-    SWAP_SIZE="${SWAP_SIZE_GB}G"
-
-    info "Configured swap size: ${SWAP_SIZE}"
-
+    info "Configured swap size: ${SWAP_SIZE_GB} GB"
 }
 
-create_swap_file() {
+####################
+# Configure Swapfile
+####################
 
-    if [[ -f /swapfile ]]; then
+configure_swap_file() {
+    local current_size
 
-        warn "/swapfile already exists."
+    if [[ -e "${SWAP_FILE}" && ! -f "${SWAP_FILE}" ]]; then
+        error "${SWAP_FILE} exists but is not a regular file."
+        return 1
+    fi
 
-        if ! swapon --show | grep -q "/swapfile"; then
+    if [[ -f "${SWAP_FILE}" ]]; then
+        current_size="$(stat -c '%s' "${SWAP_FILE}")"
 
-            info "Activating existing swap file..."
-
-            swapon /swapfile
-
+        if [[ "${current_size}" -ne "${SWAP_SIZE_BYTES}" ]]; then
+            error "${SWAP_FILE} exists with a different size."
+            error "Expected ${SWAP_SIZE_GB} GB; found ${current_size} bytes."
+            error "Resize or replace the swap file manually before retrying."
+            return 1
         fi
 
-        return
+        chmod 600 "${SWAP_FILE}"
 
+        if ! swapon --show --noheadings --raw --output NAME |
+            grep -Fxq "${SWAP_FILE}"; then
+
+            info "Activating existing swap file..."
+            mkswap "${SWAP_FILE}"
+            swapon "${SWAP_FILE}"
+        else
+            info "Configured swap file is already active."
+        fi
+
+        return 0
     fi
 
-    info "Creating ${SWAP_SIZE} swap file..."
+    info "Creating ${SWAP_SIZE_GB} GB swap file..."
 
-    fallocate -l "${SWAP_SIZE}" /swapfile
+    if ! fallocate -l "${SWAP_SIZE_BYTES}" "${SWAP_FILE}"; then
+        error "Failed to allocate ${SWAP_FILE}."
+        return 1
+    fi
 
-    chmod 600 /swapfile
+    chmod 600 "${SWAP_FILE}"
 
-    mkswap /swapfile
+    if ! mkswap "${SWAP_FILE}"; then
+        rm -f "${SWAP_FILE}"
+        error "Failed to initialize swap file."
+        return 1
+    fi
 
-    swapon /swapfile
+    if ! swapon "${SWAP_FILE}"; then
+        error "Failed to activate swap file."
+        return 1
+    fi
 
-    info "Swap file created and enabled."
+    success "Swap file created and activated."
 }
 
+########################
+# Persist Swap in Fstab
+########################
 
 persist_swap() {
+    local desired_entry="/swapfile none swap sw 0 0"
+    local temp_file
 
-    info "Persisting swap configuration..."
+    info "Checking persistent swap configuration..."
 
-    if grep -q "^/swapfile" /etc/fstab; then
+    if grep -Eq '^[[:space:]]*/swapfile([[:space:]]|$)' "${FSTAB_FILE}"; then
+        if grep -Fxq "${desired_entry}" "${FSTAB_FILE}"; then
+            info "Correct swap entry already exists in /etc/fstab."
+            return 0
+        fi
 
-        info "/swapfile already exists in /etc/fstab."
-
-        return
-
+        error "An existing /swapfile entry in /etc/fstab differs from the expected entry."
+        error "Review ${FSTAB_FILE} manually; no changes were made."
+        return 1
     fi
 
-    echo "/swapfile none swap sw 0 0" >> /etc/fstab
+    temp_file="$(mktemp)"
 
-    info "Swap added to /etc/fstab."
+    if ! cat "${FSTAB_FILE}" > "${temp_file}" ||
+       ! printf '%s\n' "${desired_entry}" >> "${temp_file}"; then
+        rm -f "${temp_file}"
+        error "Could not prepare the updated fstab."
+        return 1
+    fi
+
+    if ! cat "${temp_file}" >> "${FSTAB_FILE}"; then
+        rm -f "${temp_file}"
+        error "Could not update ${FSTAB_FILE}."
+        return 1
+    fi
+
+    rm -f "${temp_file}"
+
+    success "Swap entry added to /etc/fstab."
 }
 
+############################
+# Configure Kernel Parameters
+############################
+
 configure_kernel_parameters() {
+    local temp_file
 
-    info "Configuring kernel memory parameters..."
+    temp_file="$(mktemp)"
 
-    cat >/etc/sysctl.d/99-tanto-vps-bootstrap.conf <<EOF
+    cat > "${temp_file}" <<EOF
 vm.swappiness=${VM_SWAPPINESS}
 vm.vfs_cache_pressure=${VM_VFS_CACHE_PRESSURE}
 EOF
 
-    sysctl --system >/dev/null
+    if [[ -f "${SYSCTL_FILE}" ]] && cmp -s "${temp_file}" "${SYSCTL_FILE}"; then
+        info "Kernel parameter configuration is already current."
+        rm -f "${temp_file}"
+    else
+        info "Updating kernel parameter configuration..."
 
-    info "Kernel parameters configured."
+        if ! install -m 644 "${temp_file}" "${SYSCTL_FILE}"; then
+            rm -f "${temp_file}"
+            error "Failed to install kernel parameter configuration."
+            return 1
+        fi
+
+        rm -f "${temp_file}"
+
+        info "Applying kernel parameters..."
+        sysctl -p "${SYSCTL_FILE}"
+        success "Kernel parameters updated."
+    fi
 }
 
+#####################
+# Verify Configuration
+#####################
+
 verify_swap_configuration() {
+    local actual_size
+    local active_swap
+    local actual_swappiness
+    local actual_cache_pressure
 
     info "Verifying swap configuration..."
+
+    if ! swapon --show --noheadings --raw --output NAME |
+        grep -Fxq "${SWAP_FILE}"; then
+        error "${SWAP_FILE} is not active."
+        return 1
+    fi
+
+    actual_size="$(stat -c '%s' "${SWAP_FILE}")"
+
+    if [[ "${actual_size}" -ne "${SWAP_SIZE_BYTES}" ]]; then
+        error "Swap file size does not match configuration."
+        return 1
+    fi
+
+    actual_swappiness="$(sysctl -n vm.swappiness)"
+    actual_cache_pressure="$(sysctl -n vm.vfs_cache_pressure)"
+
+    if [[ "${actual_swappiness}" != "${VM_SWAPPINESS}" ]]; then
+        error "vm.swappiness does not match configuration."
+        return 1
+    fi
+
+    if [[ "${actual_cache_pressure}" != "${VM_VFS_CACHE_PRESSURE}" ]]; then
+        error "vm.vfs_cache_pressure does not match configuration."
+        return 1
+    fi
 
     echo
     echo "========== Memory =========="
@@ -199,66 +266,48 @@ verify_swap_configuration() {
     sysctl vm.swappiness
     sysctl vm.vfs_cache_pressure
 
-    info "Swap configuration verified successfully."
+    success "Swap configuration verified."
 }
-
 
 #######
 # Main
 #######
 
 main() {
-
     case "${1:-}" in
-
         --help|-h)
-
             show_help
-            exit 0
+            return 0
             ;;
-
         --version|-v)
-
             show_version
-            exit 0
+            return 0
             ;;
-
         "")
-
             ;;
-
         *)
-
             error "Unknown option: $1"
-            echo
             show_help
-            exit 1
+            return 1
             ;;
-
     esac
 
-
     require_root
-    
-    validate_configuration
+    check_dependencies
 
-    info "Starting swap configuration..."
-
-    check_existing_swap
+    info "Validating configuration..."
+    validate_config
 
     determine_swap_size
 
-    create_swap_file
+    info "Starting swap configuration..."
 
+    configure_swap_file
     persist_swap
-
     configure_kernel_parameters
-
     verify_swap_configuration
 
-
-    info "Swap configuration completed successfully."
-
+    success "Swap configuration completed successfully."
 }
 
 main "$@"
