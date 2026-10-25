@@ -55,14 +55,19 @@ check_dependencies() {
 
     for command_name in \
         awk \
+        chmod \
         cmp \
+        cp \
         fallocate \
         free \
         grep \
-        chmod \
+        install \
+        mktemp \
         mkswap \
+        mv \
+        rm \
+        stat \
         swapon \
-        swapoff \
         sysctl \
         truncate
     do
@@ -86,6 +91,7 @@ determine_swap_size() {
 
 configure_swap_file() {
     local current_size
+    local created_file=false
 
     if [[ -e "${SWAP_FILE}" && ! -f "${SWAP_FILE}" ]]; then
         error "${SWAP_FILE} exists but is not a regular file."
@@ -98,42 +104,47 @@ configure_swap_file() {
         if [[ "${current_size}" -ne "${SWAP_SIZE_BYTES}" ]]; then
             error "${SWAP_FILE} exists with a different size."
             error "Expected ${SWAP_SIZE_GB} GB; found ${current_size} bytes."
-            error "Resize or replace the swap file manually before retrying."
+            error "Resolve the mismatch manually before retrying."
             return 1
         fi
 
         chmod 600 "${SWAP_FILE}"
 
-        if ! swapon --show --noheadings --raw --output NAME |
+        if swapon --show --noheadings --raw --output NAME |
             grep -Fxq "${SWAP_FILE}"; then
-
-            info "Activating existing swap file..."
-            mkswap "${SWAP_FILE}"
-            swapon "${SWAP_FILE}"
-        else
             info "Configured swap file is already active."
+            return 0
         fi
 
+        info "Activating existing swap file..."
+        mkswap "${SWAP_FILE}"
+        swapon "${SWAP_FILE}"
+        success "Existing swap file activated."
         return 0
     fi
 
     info "Creating ${SWAP_SIZE_GB} GB swap file..."
 
     if ! fallocate -l "${SWAP_SIZE_BYTES}" "${SWAP_FILE}"; then
+        rm -f "${SWAP_FILE}"
         error "Failed to allocate ${SWAP_FILE}."
         return 1
     fi
 
-    chmod 600 "${SWAP_FILE}"
+    created_file=true
 
-    if ! mkswap "${SWAP_FILE}"; then
-        rm -f "${SWAP_FILE}"
-        error "Failed to initialize swap file."
+    if ! chmod 600 "${SWAP_FILE}" ||
+       ! mkswap "${SWAP_FILE}"; then
+        if [[ "${created_file}" == true ]]; then
+            rm -f "${SWAP_FILE}"
+        fi
+        error "Failed to prepare the new swap file."
         return 1
     fi
 
     if ! swapon "${SWAP_FILE}"; then
-        error "Failed to activate swap file."
+        rm -f "${SWAP_FILE}"
+        error "Failed to activate the new swap file."
         return 1
     fi
 
@@ -156,27 +167,25 @@ persist_swap() {
             return 0
         fi
 
-        error "An existing /swapfile entry in /etc/fstab differs from the expected entry."
+        error "An existing /swapfile entry differs from the expected entry."
         error "Review ${FSTAB_FILE} manually; no changes were made."
         return 1
     fi
 
-    temp_file="$(mktemp)"
+    temp_file="$(mktemp "${FSTAB_FILE}.XXXXXX")"
 
-    if ! cat "${FSTAB_FILE}" > "${temp_file}" ||
+    if ! cp -p "${FSTAB_FILE}" "${temp_file}" ||
        ! printf '%s\n' "${desired_entry}" >> "${temp_file}"; then
         rm -f "${temp_file}"
         error "Could not prepare the updated fstab."
         return 1
     fi
 
-    if ! cat "${temp_file}" >> "${FSTAB_FILE}"; then
+    if ! mv -f "${temp_file}" "${FSTAB_FILE}"; then
         rm -f "${temp_file}"
-        error "Could not update ${FSTAB_FILE}."
+        error "Could not replace ${FSTAB_FILE}."
         return 1
     fi
-
-    rm -f "${temp_file}"
 
     success "Swap entry added to /etc/fstab."
 }
@@ -187,6 +196,9 @@ persist_swap() {
 
 configure_kernel_parameters() {
     local temp_file
+    local actual_swappiness
+    local actual_cache_pressure
+    local config_changed=false
 
     temp_file="$(mktemp)"
 
@@ -195,10 +207,9 @@ vm.swappiness=${VM_SWAPPINESS}
 vm.vfs_cache_pressure=${VM_VFS_CACHE_PRESSURE}
 EOF
 
-    if [[ -f "${SYSCTL_FILE}" ]] && cmp -s "${temp_file}" "${SYSCTL_FILE}"; then
-        info "Kernel parameter configuration is already current."
-        rm -f "${temp_file}"
-    else
+    if [[ ! -f "${SYSCTL_FILE}" ]] ||
+       ! cmp -s "${temp_file}" "${SYSCTL_FILE}"; then
+
         info "Updating kernel parameter configuration..."
 
         if ! install -m 644 "${temp_file}" "${SYSCTL_FILE}"; then
@@ -207,12 +218,25 @@ EOF
             return 1
         fi
 
-        rm -f "${temp_file}"
+        config_changed=true
+    fi
+
+    rm -f "${temp_file}"
+
+    actual_swappiness="$(sysctl -n vm.swappiness)"
+    actual_cache_pressure="$(sysctl -n vm.vfs_cache_pressure)"
+
+    if [[ "${config_changed}" == true ||
+          "${actual_swappiness}" != "${VM_SWAPPINESS}" ||
+          "${actual_cache_pressure}" != "${VM_VFS_CACHE_PRESSURE}" ]]; then
 
         info "Applying kernel parameters..."
         sysctl -p "${SYSCTL_FILE}"
-        success "Kernel parameters updated."
+    else
+        info "Kernel configuration and active parameters are already current."
     fi
+
+    success "Kernel parameters configured."
 }
 
 #####################
