@@ -65,13 +65,6 @@ TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 
 BACKUP_FILE="server-backup-${TIMESTAMP}.tar.gz"
 
-find "$BACKUP_DIR" \
-    -type f \
-    -mtime +"${BACKUP_RETENTION_DAYS}" \
-    -delete
-
-JOURNAL_RETENTION="14d"
-
 #########################
 # Validate Configuration
 #########################
@@ -81,6 +74,7 @@ validate_configuration() {
         error "BACKUP_RETENTION_DAYS must be a non-negative integer."
         return 1
     fi
+
 }
 
 ###########################
@@ -91,7 +85,7 @@ prepare_backup_directory() {
 
     info "Preparing backup directory..."
 
-    mkdir -p "$BACKUP_DIR"
+    install -d -m 700 "$BACKUP_DIR"
 
 }
 
@@ -103,12 +97,22 @@ backup_system_files() {
 
     info "Backing up system configuration..."
 
-    tar \
-        -czf "${BACKUP_DIR}/${BACKUP_FILE}" \
-        /etc \
-        /root \
-        /home \
-        2>/dev/null || true
+    local temporary_archive
+    temporary_archive="$(mktemp "${BACKUP_DIR}/.server-backup-${TIMESTAMP}.XXXXXX")"
+
+    if ! tar -czf "$temporary_archive" -C / etc root home; then
+        rm -f -- "$temporary_archive"
+        error "System archive creation failed."
+        return 1
+    fi
+
+    if ! tar -tzf "$temporary_archive" >/dev/null; then
+        rm -f -- "$temporary_archive"
+        error "System archive integrity check failed."
+        return 1
+    fi
+
+    mv -f -- "$temporary_archive" "${BACKUP_DIR}/${BACKUP_FILE}"
 
 }
 
@@ -153,7 +157,7 @@ backup_databases() {
 
         pg_dumpall \
         > "${BACKUP_DIR}/postgres-${TIMESTAMP}.sql" \
-        || warn "PostgreSQL backup failed."
+        || { rm -f -- "${BACKUP_DIR}/postgres-${TIMESTAMP}.sql"; error "PostgreSQL backup failed."; return 1; }
 
 
     else
@@ -171,7 +175,7 @@ backup_databases() {
         mysqldump \
         --all-databases \
         > "${BACKUP_DIR}/mysql-${TIMESTAMP}.sql" \
-        || warn "MySQL backup failed."
+        || { rm -f -- "${BACKUP_DIR}/mysql-${TIMESTAMP}.sql"; error "MySQL backup failed."; return 1; }
 
     else
 
@@ -192,6 +196,11 @@ cleanup_old_backups() {
 
     find "$BACKUP_DIR" \
         -type f \
+        \( -name 'server-backup-*.tar.gz' \
+        -o -name 'docker-containers-*.txt' \
+        -o -name 'docker-images-*.txt' \
+        -o -name 'postgres-*.sql' \
+        -o -name 'mysql-*.sql' \) \
         -mtime +"${BACKUP_RETENTION_DAYS}" \
         -delete
 
@@ -206,7 +215,12 @@ verify_backup() {
 
     info "Checking backup files..."
 
-    ls -lh "$BACKUP_DIR"
+    [[ -s "${BACKUP_DIR}/${BACKUP_FILE}" ]] || {
+        error "Expected system archive is missing or empty."
+        return 1
+    }
+
+    tar -tzf "${BACKUP_DIR}/${BACKUP_FILE}" >/dev/null
 
 }
 
@@ -242,6 +256,8 @@ main() {
     require_root
 
     validate_configuration
+
+    umask 077
 
     info "Starting backup process..."
 
